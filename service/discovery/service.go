@@ -50,17 +50,16 @@ func (s *Service) Discover(
 			systemInfo, warnings, collectErr := collector.Collect(ctx, ex)
 
 			result.System = systemInfo
-			result.Warnings = append(result.Warnings, warnings...)
+			appendWarnings(&result, warnings)
 
 			if collectErr != nil {
 				if ctx.Err() != nil {
 					return result, ctx.Err()
 				}
 
-				result.Warnings = append(
-					result.Warnings,
-					inspector.Name()+" information: "+collectErr.Error(),
-				)
+				appendWarnings(&result, []string{
+					inspector.Name() + " information: " + collectErr.Error(),
+				})
 			}
 		}
 
@@ -72,10 +71,9 @@ func (s *Service) Discover(
 				return result, ctx.Err()
 			}
 
-			result.Warnings = append(
-				result.Warnings,
-				inspector.Name()+" detection: "+detectErr.Error(),
-			)
+			appendWarnings(&result, []string{
+				inspector.Name() + " detection: " + detectErr.Error(),
+			})
 
 			continue
 		}
@@ -105,7 +103,7 @@ func (s *Service) Discover(
 		}
 
 		result.Servers = append(result.Servers, serverInfo)
-		result.Warnings = append(result.Warnings, warnings...)
+		appendWarnings(&result, warnings)
 
 		found = append(found, domains...)
 	}
@@ -142,6 +140,13 @@ func (s *Service) Discover(
 	result.TotalDomains = len(result.Domains)
 
 	return result, nil
+}
+
+func appendWarnings(result *Result, warnings []string) {
+	for _, warning := range warnings {
+		result.Warnings = append(result.Warnings, warning)
+		result.ErrorEvents = append(result.ErrorEvents, WarningEvent(warning))
+	}
 }
 
 func newResult() Result {

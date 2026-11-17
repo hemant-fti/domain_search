@@ -73,6 +73,13 @@ func runDiscovery(ctx context.Context, useJSON, pretty bool) error {
 
 	result, err := service.Discover(ctx, ssh.NewLocalExecutor())
 	if err != nil {
+		if recordErr := saveFailedScanResult(result.ScannedAt); recordErr != nil {
+			return fmt.Errorf(
+				"discovery failed: %w (failed to record unsuccessful scan: %v)",
+				err,
+				recordErr,
+			)
+		}
 		return fmt.Errorf("discovery failed: %w", err)
 	}
 

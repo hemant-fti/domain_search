@@ -16,6 +16,7 @@ type Result struct {
 	TotalDomains     int            `json:"total_domains"`
 	Domains          []DomainResult `json:"domains"`
 	Warnings         []string       `json:"warnings,omitempty"`
+	ErrorEvents      []ScanError    `json:"-"`
 }
 
 type DomainResult struct {

@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -17,6 +18,10 @@ import (
 )
 
 func TestWriteHumanIncludesDiscoveryFields(t *testing.T) {
+	originalPath := scanResultsFile
+	scanResultsFile = filepath.Join(t.TempDir(), "scan-results.jsonl")
+	t.Cleanup(func() { scanResultsFile = originalPath })
+
 	result := discovery.Result{
 		ScanResponse: discovery.ScanResponse{
 			Servers: []discovery.ServerInfo{{
@@ -91,7 +96,7 @@ func TestWriteHumanIncludesDiscoveryFields(t *testing.T) {
 		"SSL certificate : /etc/letsencrypt/live/example.com/fullchain.pem",
 		"SSL certificate key : /etc/letsencrypt/live/example.com/privkey.pem",
 		"DNS matches : 1",
-		"Some metrics were unavailable",
+		"Some system information could not be collected.",
 	} {
 		if !strings.Contains(normalizedOutput, field) {
 			t.Errorf("human-readable output does not contain %q", field)
@@ -107,6 +112,29 @@ func TestWriteHumanIncludesDiscoveryFields(t *testing.T) {
 		if strings.Contains(websiteReport[0], field) {
 			t.Errorf("website report contains removed DNS field %q", field)
 		}
+	}
+}
+
+func TestWriteWarningsHidesTechnicalDetails(t *testing.T) {
+	const technical = "nginx: open /etc/nginx/sites-enabled/example.conf: permission denied"
+	var output bytes.Buffer
+	writeWarnings(&output, discovery.Result{Warnings: []string{technical}})
+
+	if strings.Contains(output.String(), technical) ||
+		strings.Contains(output.String(), "/etc/nginx") ||
+		strings.Contains(output.String(), "permission denied") {
+		t.Fatalf("warning output exposed technical details: %s", output.String())
+	}
+	if !strings.Contains(output.String(), "Could not access some web server configuration files.") {
+		t.Fatalf("warning output did not contain friendly message: %s", output.String())
+	}
+}
+
+func TestWriteWarningsRetainsNoWarningMessage(t *testing.T) {
+	var output bytes.Buffer
+	writeWarnings(&output, discovery.Result{})
+	if !strings.Contains(output.String(), "No warnings. Everything completed without reported issues.") {
+		t.Fatalf("no-warning message missing: %s", output.String())
 	}
 }
 
@@ -180,15 +208,7 @@ func TestAppendJSONResultPreservesPriorScans(t *testing.T) {
 		}
 	}
 
-	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("os.ReadFile() error = %v", err)
-	}
-
-	var results []map[string]string
-	if err := json.Unmarshal(data, &results); err != nil {
-		t.Fatalf("json.Unmarshal() error = %v", err)
-	}
+	results := readJSONLRecords(t, path)
 
 	if len(results) != 2 || results[0]["scan"] != "first" || results[1]["scan"] != "second" {
 		t.Errorf("stored results = %#v, want both scans in order", results)
@@ -214,4 +234,204 @@ func TestAppendJSONResultDoesNotOverwriteInvalidExistingFile(t *testing.T) {
 	if !bytes.Equal(data, original) {
 		t.Errorf("existing file changed to %q, want %q", data, original)
 	}
+}
+
+func TestSaveScanResultAppendsScanAndWarningEvents(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "scan-results.jsonl")
+	originalPath := scanResultsFile
+	scanResultsFile = path
+	t.Cleanup(func() { scanResultsFile = originalPath })
+
+	scannedAt := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	result := discovery.Result{
+		Status:    "completed_with_warnings",
+		ScannedAt: scannedAt,
+		Warnings:  []string{"nginx: open /etc/nginx/example.conf: permission denied; token=secret-value"},
+		ErrorEvents: []discovery.ScanError{discovery.NewScanError(
+			"warning",
+			"nginx",
+			fmt.Errorf("open /etc/nginx/example.conf: permission denied; token=secret-value"),
+			scannedAt.Add(time.Second),
+		)},
+	}
+	if err := saveScanResult(result); err != nil {
+		t.Fatalf("saveScanResult() error = %v", err)
+	}
+
+	records := readJSONLRecords(t, path)
+	if len(records) != 2 {
+		t.Fatalf("got %d JSONL records, want scan and warning", len(records))
+	}
+	if records[0]["type"] != "scan_result" || records[0]["status"] != "completed_with_warnings" {
+		t.Errorf("scan record = %#v", records[0])
+	}
+	if records[0]["scanned_at"] != scannedAt.Format(time.RFC3339Nano) {
+		t.Errorf("scan timestamp = %#v, want %s", records[0]["scanned_at"], scannedAt.Format(time.RFC3339Nano))
+	}
+	if records[1]["type"] != "warning" ||
+		records[1]["code"] != "NGINX_CONFIG_ACCESS_FAILED" ||
+		records[1]["message"] != "Could not access some web server configuration files." {
+		t.Errorf("warning event = %#v", records[1])
+	}
+	if records[1]["details"] != "open /etc/nginx/example.conf: permission denied; token=[REDACTED]" {
+		t.Errorf("warning details = %#v, want redacted technical error", records[1]["details"])
+	}
+	if strings.Contains(records[0]["warnings"].([]any)[0].(string), "/etc/nginx") {
+		t.Error("scan record exposed raw warning details")
+	}
+	if strings.Contains(records[1]["details"].(string), "secret-value") {
+		t.Error("warning details exposed a secret")
+	}
+}
+
+func TestSaveScanResultAppendsMultipleSuccessfulScans(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "scan-results.jsonl")
+	originalPath := scanResultsFile
+	scanResultsFile = path
+	t.Cleanup(func() { scanResultsFile = originalPath })
+
+	for _, status := range []string{"completed", "completed_with_warnings"} {
+		if err := saveScanResult(discovery.Result{Status: status}); err != nil {
+			t.Fatalf("saveScanResult(%q) error = %v", status, err)
+		}
+	}
+
+	records := readJSONLRecords(t, path)
+	if len(records) != 2 ||
+		records[0]["type"] != "scan_result" ||
+		records[0]["status"] != "completed" ||
+		records[1]["type"] != "scan_result" ||
+		records[1]["status"] != "completed_with_warnings" {
+		t.Fatalf("successful scan records = %#v", records)
+	}
+}
+
+func TestWriteErrorLogsStructuredErrorWithoutExposingDetails(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "scan-results.jsonl")
+	originalPath := scanResultsFile
+	scanResultsFile = path
+	t.Cleanup(func() { scanResultsFile = originalPath })
+
+	const technical = "nginx: open /etc/nginx/sites-enabled/example.conf: permission denied"
+	var output bytes.Buffer
+	if err := writeError(&output, "command_failed", fmt.Errorf("%s", technical), false); err != nil {
+		t.Fatalf("writeError() error = %v", err)
+	}
+	if strings.Contains(output.String(), technical) ||
+		strings.Contains(output.String(), "/etc/nginx") ||
+		strings.Contains(output.String(), "permission denied") {
+		t.Fatalf("terminal error exposed technical details: %s", output.String())
+	}
+
+	records := readJSONLRecords(t, path)
+	if len(records) != 1 || records[0]["type"] != "error" {
+		t.Fatalf("error records = %#v, want one error event", records)
+	}
+	if records[0]["details"] != technical {
+		t.Errorf("logged details = %#v, want %q", records[0]["details"], technical)
+	}
+}
+
+func TestSaveFailedScanResultAppendsFailureRecord(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "scan-results.jsonl")
+	timestamp := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	if err := saveFailedScanResultTo(path, timestamp); err != nil {
+		t.Fatalf("saveFailedScanResultTo() error = %v", err)
+	}
+
+	records := readJSONLRecords(t, path)
+	if len(records) != 1 || records[0]["type"] != "scan_result" || records[0]["status"] != "failed" {
+		t.Fatalf("failed scan record = %#v", records)
+	}
+}
+
+func TestFailedScanLogsOneErrorEvent(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "scan-results.jsonl")
+	originalPath := scanResultsFile
+	scanResultsFile = path
+	t.Cleanup(func() { scanResultsFile = originalPath })
+
+	if err := saveFailedScanResult(time.Now()); err != nil {
+		t.Fatalf("saveFailedScanResult() error = %v", err)
+	}
+	var output bytes.Buffer
+	if err := writeError(&output, "command_failed", fmt.Errorf("network unreachable"), false); err != nil {
+		t.Fatalf("writeError() error = %v", err)
+	}
+
+	records := readJSONLRecords(t, path)
+	errorCount := 0
+	for _, record := range records {
+		if record["type"] == "error" {
+			errorCount++
+		}
+	}
+	if len(records) != 2 || errorCount != 1 {
+		t.Fatalf("failed scan log records = %#v; want one failed scan and one error event", records)
+	}
+}
+
+func TestWriteErrorJSONModeRemainsMachineReadable(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "scan-results.jsonl")
+	originalPath := scanResultsFile
+	scanResultsFile = path
+	t.Cleanup(func() { scanResultsFile = originalPath })
+
+	var output bytes.Buffer
+	if err := writeError(&output, "command_failed", fmt.Errorf("lookup example.com: i/o timeout"), true); err != nil {
+		t.Fatalf("writeError() error = %v", err)
+	}
+	var payload struct {
+		Error struct {
+			Code    string `json:"code"`
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(output.Bytes(), &payload); err != nil {
+		t.Fatalf("JSON error output is invalid: %v", err)
+	}
+	if payload.Error.Code != "command_failed" ||
+		payload.Error.Message != "Could not verify the website's domain address." {
+		t.Errorf("JSON error = %#v", payload.Error)
+	}
+}
+
+func TestWriteErrorSurfacesJSONLFailure(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "not-a-file")
+	if err := os.Mkdir(path, 0700); err != nil {
+		t.Fatal(err)
+	}
+	originalPath := scanResultsFile
+	scanResultsFile = path
+	t.Cleanup(func() { scanResultsFile = originalPath })
+
+	var output bytes.Buffer
+	err := writeError(&output, "command_failed", fmt.Errorf("unexpected failure"), false)
+	if err == nil {
+		t.Fatal("writeError() error = nil, want JSONL write failure")
+	}
+	if !strings.Contains(output.String(), "Some checks could not be completed.") {
+		t.Errorf("friendly error not displayed before logging failure: %s", output.String())
+	}
+}
+
+func readJSONLRecords(t *testing.T, path string) []map[string]any {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(data) == 0 || data[len(data)-1] != '\n' {
+		t.Fatalf("JSONL file has no final newline: %q", data)
+	}
+	lines := bytes.Split(bytes.TrimSuffix(data, []byte{'\n'}), []byte{'\n'})
+	records := make([]map[string]any, 0, len(lines))
+	for lineNumber, line := range lines {
+		var record map[string]any
+		if err := json.Unmarshal(line, &record); err != nil {
+			t.Fatalf("JSONL line %d is invalid: %v", lineNumber+1, err)
+		}
+		records = append(records, record)
+	}
+	return records
 }

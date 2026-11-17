@@ -3,12 +3,14 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"strconv"
 	"strings"
 	"text/tabwriter"
+	"time"
 
 	"domain-scout/service/discovery"
 )
@@ -16,9 +18,9 @@ import (
 const (
 	sectionLine = "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 	separator   = "────────────────────────────────────────────────────────────"
-
-	scanResultsFile = "scan-results.jsonl"
 )
+
+var scanResultsFile = "scan-results.jsonl"
 
 func writeJSON(result any, pretty bool) error {
 	data, err := marshalJSON(result, pretty)
@@ -53,23 +55,47 @@ func marshalJSON(result any, pretty bool) ([]byte, error) {
 	return output.Bytes(), nil
 }
 
-func appendJSONResult(path string, result []byte) error {
+func appendJSONResult(path string, result []byte) (returnErr error) {
+	result = bytes.TrimSpace(result)
+	if !json.Valid(result) || len(result) == 0 || result[0] != '{' {
+		return fmt.Errorf("append JSONL result: record must be a valid JSON object")
+	}
+
 	file, err := os.OpenFile(
 		path,
-		os.O_APPEND|os.O_CREATE|os.O_WRONLY,
+		os.O_APPEND|os.O_CREATE|os.O_RDWR,
 		0644,
 	)
 	if err != nil {
 		return fmt.Errorf("open results file: %w", err)
 	}
-	defer file.Close()
+	defer func() {
+		if err := file.Close(); err != nil {
+			returnErr = errors.Join(returnErr, fmt.Errorf("close results file: %w", err))
+		}
+	}()
+
+	info, err := file.Stat()
+	if err != nil {
+		return fmt.Errorf("inspect results file: %w", err)
+	}
+	if info.Size() > 0 {
+		var lastByte [1]byte
+		if _, err := file.ReadAt(lastByte[:], info.Size()-1); err != nil {
+			return fmt.Errorf("read end of results file: %w", err)
+		}
+		if lastByte[0] != '\n' {
+			return fmt.Errorf("existing results file does not end with a newline")
+		}
+	}
 
 	// Ensure every JSON object occupies exactly one line.
-	result = bytes.TrimSpace(result)
 	result = append(result, '\n')
 
-	if _, err := file.Write(result); err != nil {
+	if written, err := file.Write(result); err != nil {
 		return fmt.Errorf("append JSONL result: %w", err)
+	} else if written != len(result) {
+		return fmt.Errorf("append JSONL result: %w", io.ErrShortWrite)
 	}
 
 	return nil
@@ -348,7 +374,12 @@ func writeWarnings(w io.Writer, result discovery.Result) {
 	}
 
 	for index, warning := range result.Warnings {
-		fmt.Fprintf(w, "  %d. %s\n", index+1, warning)
+		fmt.Fprintf(
+			w,
+			"  %d. %s\n",
+			index+1,
+			discovery.FriendlyErrorMessage(fmt.Errorf("%s", warning), ""),
+		)
 	}
 
 	fmt.Fprintln(w)
@@ -468,11 +499,12 @@ func scanStatusLabel(status string) string {
 	}
 }
 
-func writeError(output *os.File, code string, err error) {
+func writeError(output io.Writer, code string, err error, jsonMode bool) error {
 	if err == nil {
-		return
+		return nil
 	}
 
+	event := discovery.NewScanError("error", "", err, time.Now().UTC())
 	payload := struct {
 		Error struct {
 			Code    string `json:"code"`
@@ -481,20 +513,105 @@ func writeError(output *os.File, code string, err error) {
 	}{}
 
 	payload.Error.Code = code
-	payload.Error.Message = err.Error()
+	payload.Error.Message = event.Message
 
-	_ = json.NewEncoder(output).Encode(payload)
+	var outputErr error
+	if jsonMode {
+		if err := json.NewEncoder(output).Encode(payload); err != nil {
+			outputErr = fmt.Errorf("write JSON error output: %w", err)
+		}
+	} else if _, err := fmt.Fprintln(output, event.Message); err != nil {
+		outputErr = fmt.Errorf("write human-readable error output: %w", err)
+	}
+
+	logErr := appendJSONEvent(scanResultsFile, event)
+	return errors.Join(outputErr, logErr)
 }
 
 func saveScanResult(result any) error {
-	data, err := marshalJSON(result, false)
+	recordResult := result
+	if scan, ok := result.(discovery.Result); ok {
+		warnings := scan.Warnings
+		scan.Warnings = make([]string, 0, len(scan.Warnings))
+		for _, warning := range warnings {
+			scan.Warnings = append(
+				scan.Warnings,
+				discovery.WarningEvent(warning).Message,
+			)
+		}
+		recordResult = scan
+	}
+
+	data, err := marshalJSON(recordResult, false)
 	if err != nil {
 		return fmt.Errorf("encode scan result: %w", err)
+	}
+	var record map[string]json.RawMessage
+	if err := json.Unmarshal(data, &record); err != nil {
+		return fmt.Errorf("prepare scan result record: %w", err)
+	}
+	recordType, err := json.Marshal("scan_result")
+	if err != nil {
+		return fmt.Errorf("encode scan result type: %w", err)
+	}
+	record["type"] = recordType
+	data, err = json.Marshal(record)
+	if err != nil {
+		return fmt.Errorf("encode scan result record: %w", err)
 	}
 
 	if err := appendJSONResult(scanResultsFile, data); err != nil {
 		return fmt.Errorf("save scan result to %s: %w", scanResultsFile, err)
 	}
 
+	if scan, ok := result.(discovery.Result); ok {
+		events := scan.ErrorEvents
+		if len(events) != len(scan.Warnings) {
+			events = make([]discovery.ScanError, 0, len(scan.Warnings))
+			for _, warning := range scan.Warnings {
+				events = append(events, discovery.WarningEvent(warning))
+			}
+		}
+		for _, event := range events {
+			if err := appendJSONEvent(scanResultsFile, event); err != nil {
+				return fmt.Errorf("save warning event to %s: %w", scanResultsFile, err)
+			}
+		}
+	}
+
+	return nil
+}
+
+func appendJSONEvent(path string, event discovery.ScanError) error {
+	data, err := json.Marshal(event)
+	if err != nil {
+		return fmt.Errorf("encode %s event: %w", event.Type, err)
+	}
+	if err := appendJSONResult(path, data); err != nil {
+		return fmt.Errorf("append %s event: %w", event.Type, err)
+	}
+	return nil
+}
+
+func saveFailedScanResult(scannedAt time.Time) error {
+	return saveFailedScanResultTo(scanResultsFile, scannedAt)
+}
+
+func saveFailedScanResultTo(path string, scannedAt time.Time) error {
+	if scannedAt.IsZero() {
+		scannedAt = time.Now().UTC()
+	}
+	record := map[string]any{
+		"type":       "scan_result",
+		"status":     "failed",
+		"scanned_at": scannedAt.UTC(),
+	}
+	data, err := json.Marshal(record)
+	if err != nil {
+		return fmt.Errorf("encode failed scan result: %w", err)
+	}
+	if err := appendJSONResult(path, data); err != nil {
+		return fmt.Errorf("save failed scan result to %s: %w", path, err)
+	}
 	return nil
 }
