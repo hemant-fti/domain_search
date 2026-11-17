@@ -258,31 +258,15 @@ func writeDomains(w io.Writer, result discovery.Result) {
 			displayValue(domain.Name),
 		)
 
-		fmt.Fprintf(
-			w,
-			"  DNS status: %s\n",
-			dnsStatusLabel(domain.DNS.Status),
-		)
-
 		tw := newTableWriter(w)
 
 		writeRow(tw, "Web server", displayValue(domain.Source))
 		writeRow(tw, "Configuration file", displayValue(domain.ConfigPath))
 		writeRow(tw, "Website directory", displayValue(domain.DocumentRoot))
 		writeRow(tw, "Proxy destination", displayValue(domain.ProxyTarget))
-		writeRow(tw, "HTTPS / SSL", sslStatusLabel(domain.SSL))
+		writeRow(tw, "SSL certificate", displayValue(domain.SSLCertificate))
 		writeRow(tw, "Other domain names", displayList(domain.Aliases))
 		writeRow(tw, "Listening ports", displayPorts(domain.Ports))
-		writeRow(tw, "DNS addresses", displayList(domain.DNS.ResolvedIPs))
-
-		switch domain.DNS.Status {
-		case "matches_server":
-			writeRow(tw, "Points to this server", "Yes")
-		case "resolved_other_ip":
-			writeRow(tw, "Points to this server", "No")
-		default:
-			writeRow(tw, "Points to this server", "Not verified")
-		}
 
 		flushTable(tw)
 		fmt.Fprintln(w, separator)
@@ -408,12 +392,11 @@ func displayPorts(ports []int) string {
 	}
 
 	values := make([]string, len(ports))
-
 	for index, port := range ports {
 		values[index] = strconv.Itoa(port)
 	}
 
-	return strings.Join(values, ", ")
+	return "[" + strings.Join(values, ", ") + "]"
 }
 
 func formatCount(value int) string {
@@ -483,30 +466,6 @@ func scanStatusLabel(status string) string {
 	default:
 		return displayValue(status)
 	}
-}
-
-func dnsStatusLabel(status string) string {
-	switch status {
-	case "matches_server":
-		return "[OK] DNS matches this server's IP"
-
-	case "resolved_other_ip":
-		return "[WARNING] DNS points to a different IP"
-
-	case "unresolved":
-		return "[WARNING] DNS lookup unsuccessful"
-
-	default:
-		return "[UNKNOWN] DNS status not available"
-	}
-}
-
-func sslStatusLabel(enabled bool) string {
-	if enabled {
-		return "Enabled"
-	}
-
-	return "Not detected"
 }
 
 func writeError(output *os.File, code string, err error) {

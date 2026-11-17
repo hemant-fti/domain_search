@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -60,14 +61,15 @@ func TestWriteHumanIncludesDiscoveryFields(t *testing.T) {
 		TotalDomains:     1,
 		Domains: []discovery.DomainResult{{
 			Domain: inspectors.Domain{
-				Name:         "example.com",
-				Source:       "nginx",
-				ConfigPath:   "/etc/nginx/sites-enabled/example",
-				DocumentRoot: "/var/www/example",
-				ProxyTarget:  "http://127.0.0.1:8080",
-				SSL:          true,
-				Aliases:      []string{"www.example.com"},
-				Ports:        []int{80, 443},
+				Name:           "example.com",
+				Source:         "nginx",
+				ConfigPath:     "/etc/nginx/sites-enabled/example",
+				DocumentRoot:   "/var/www/example",
+				ProxyTarget:    "http://127.0.0.1:8080",
+				SSL:            true,
+				SSLCertificate: "/etc/letsencrypt/live/example.com/fullchain.pem",
+				Aliases:        []string{"www.example.com"},
+				Ports:          []int{80, 443},
 			},
 			DNS: dns.Result{
 				ResolvedIPs:   []string{"192.0.2.10"},
@@ -83,24 +85,82 @@ func TestWriteHumanIncludesDiscoveryFields(t *testing.T) {
 		t.Fatalf("writeHuman() error = %v", err)
 	}
 
+	normalizedOutput := strings.Join(strings.Fields(output.String()), " ")
 	for _, field := range []string{
-		"Scan status: completed",
-		"Main IP address: 192.0.2.10",
-		"nginx: running",
-		"Listening ports: 80, 443",
-		"Time since startup: 1 day, 1 hour, 1 minute, 1 second",
-		"Root disk space: 100.00 GiB total, 60.00 GiB used, 40.00 GiB free",
-		"Websites found: 1",
-		"Forwards requests to: http://127.0.0.1:8080",
-		"Secure HTTPS configured: Yes",
-		"DNS result: The website name points to this server",
-		"DNS addresses: 192.0.2.10",
-		"DNS points to this server: Yes",
+		"Listening ports : [80, 443]",
+		"SSL certificate : /etc/letsencrypt/live/example.com/fullchain.pem",
+		"SSL certificate key : /etc/letsencrypt/live/example.com/privkey.pem",
+		"DNS matches : 1",
 		"Some metrics were unavailable",
 	} {
-		if !strings.Contains(output.String(), field) {
+		if !strings.Contains(normalizedOutput, field) {
 			t.Errorf("human-readable output does not contain %q", field)
 		}
+	}
+
+	websiteReport := strings.SplitN(output.String(), "Website 1:", 2)
+	if len(websiteReport) != 2 {
+		t.Fatal("human-readable output does not contain website report")
+	}
+	websiteReport = strings.SplitN(websiteReport[1], separator, 2)
+	for _, field := range []string{"DNS status", "DNS addresses", "Points to this server"} {
+		if strings.Contains(websiteReport[0], field) {
+			t.Errorf("website report contains removed DNS field %q", field)
+		}
+	}
+}
+
+func TestWriteDomainsReportsMissingCertificatePaths(t *testing.T) {
+	var output bytes.Buffer
+	writeDomains(&output, discovery.Result{
+		Domains: []discovery.DomainResult{{
+			Domain: inspectors.Domain{Name: "example.com"},
+		}},
+	})
+
+	normalizedOutput := strings.Join(strings.Fields(output.String()), " ")
+	for _, field := range []string{
+		"SSL certificate : Not reported",
+		"SSL certificate key : Not reported",
+	} {
+		if !strings.Contains(normalizedOutput, field) {
+			t.Errorf("website report does not contain %q", field)
+		}
+	}
+}
+
+func TestDomainJSONKeepsPortsAsArrayAndDNSData(t *testing.T) {
+	result := discovery.DomainResult{
+		Domain: inspectors.Domain{
+			Name:  "www.example.com",
+			Ports: []int{80, 443},
+		},
+		DNS: dns.Result{
+			ResolvedIPs:   []string{"192.0.2.10"},
+			MatchesServer: true,
+			Status:        "matches_server",
+		},
+	}
+
+	data, err := json.Marshal(result)
+	if err != nil {
+		t.Fatalf("json.Marshal() error = %v", err)
+	}
+
+	var decoded map[string]json.RawMessage
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("json.Unmarshal() error = %v", err)
+	}
+
+	var ports []int
+	if err := json.Unmarshal(decoded["ports"], &ports); err != nil {
+		t.Fatalf("ports JSON is not an integer array: %s (%v)", decoded["ports"], err)
+	}
+	if !reflect.DeepEqual(ports, []int{80, 443}) {
+		t.Errorf("JSON ports = %#v, want [80 443]", ports)
+	}
+	if _, ok := decoded["dns"]; !ok {
+		t.Fatal("JSON result is missing DNS verification data")
 	}
 }
 

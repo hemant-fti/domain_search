@@ -11,10 +11,11 @@ import (
 var (
 	serverStart = regexp.MustCompile(`(?m)^[ \t]*server[ \t]*\{`)
 
-	serverName = regexp.MustCompile(`(?m)^[ \t]*server_name[ \t]+([^;]+);`)
-	root       = regexp.MustCompile(`(?m)^[ \t]*root[ \t]+([^;]+);`)
-	proxy      = regexp.MustCompile(`(?m)^[ \t]*proxy_pass[ \t]+([^;]+);`)
-	listen     = regexp.MustCompile(`(?m)^[ \t]*listen[ \t]+([^;]+);`)
+	serverName  = regexp.MustCompile(`(?m)^[ \t]*server_name[ \t]+([^;]+);`)
+	root        = regexp.MustCompile(`(?m)^[ \t]*root[ \t]+([^;]+);`)
+	proxy       = regexp.MustCompile(`(?m)^[ \t]*proxy_pass[ \t]+([^;]+);`)
+	listen      = regexp.MustCompile(`(?m)^[ \t]*listen[ \t]+([^;]+);`)
+	certificate = regexp.MustCompile(`(?m)^[ \t]*ssl_certificate[ \t]+([^;]+);`)
 )
 
 func Parse(config string) []inspectors.Domain {
@@ -65,6 +66,10 @@ func Parse(config string) []inspectors.Domain {
 
 		if match := proxy.FindStringSubmatch(block); len(match) > 1 {
 			domain.ProxyTarget = strings.TrimSpace(match[1])
+		}
+
+		if match := certificate.FindStringSubmatch(block); len(match) > 1 {
+			domain.SSLCertificate = strings.TrimSpace(match[1])
 		}
 
 		domains = append(domains, domain)

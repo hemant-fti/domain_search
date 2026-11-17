@@ -1,8 +1,10 @@
 package discovery
 
 import (
-	"domain-scout/service/inspectors"
+	"sort"
 	"strings"
+
+	"domain-scout/service/inspectors"
 )
 
 func Normalize(input []inspectors.Domain) []inspectors.Domain {
@@ -36,6 +38,10 @@ func Normalize(input []inspectors.Domain) []inspectors.Domain {
 				existing.ProxyTarget = domain.ProxyTarget
 			}
 
+			if existing.SSLCertificate == "" {
+				existing.SSLCertificate = domain.SSLCertificate
+			}
+
 			existing.SSL = existing.SSL || domain.SSL
 
 			existing.Aliases = appendUnique(
@@ -47,12 +53,14 @@ func Normalize(input []inspectors.Domain) []inspectors.Domain {
 				existing.Ports,
 				domain.Ports...,
 			)
+			sort.Ints(existing.Ports)
 
 			continue
 		}
 
 		domain.Aliases = appendUnique(nil, domain.Aliases...)
 		domain.Ports = appendUniqueInts(nil, domain.Ports...)
+		sort.Ints(domain.Ports)
 
 		index[domain.Name] = len(out)
 		out = append(out, domain)

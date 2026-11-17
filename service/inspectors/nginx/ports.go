@@ -1,6 +1,7 @@
 package nginx
 
 import (
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -47,6 +48,7 @@ func parsePorts(block string) []int {
 		ports = append(ports, port)
 	}
 
+	sort.Ints(ports)
 	return ports
 }
 
