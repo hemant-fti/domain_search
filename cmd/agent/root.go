@@ -1,0 +1,18 @@
+package main
+
+import "github.com/spf13/cobra"
+
+func newRootCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:           "domain-scout",
+		Short:         "Discover services and system information on a server",
+		Long:          "DomainScout is a server discovery CLI that detects configured services and collects system information.",
+		SilenceUsage:  true,
+		SilenceErrors: true,
+	}
+
+	cmd.AddCommand(newScanCommand())
+	cmd.AddCommand(newVersionCommand())
+
+	return cmd
+}
