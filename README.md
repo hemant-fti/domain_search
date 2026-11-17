@@ -48,7 +48,7 @@ That target writes `dist/domain-scout-linux-amd64`. Copy the binary to the Linux
 ./domain-scout version
 ```
 
-The default scan timeout is two minutes. `--pretty` also selects JSON output; `--compact` selects compact JSON. The CLI writes scan results to stdout. On a scan or command error it writes a JSON error object to stdout and exits with a non-zero status.
+The default scan timeout is two minutes. `--pretty` also selects JSON output; `--compact` selects compact JSON. JSON scan results are written to stdout and appended to `scan-results.json` in the current working directory as a JSON array, preserving results from earlier runs. On a scan or command error the CLI writes a JSON error object to stdout and exits with a non-zero status.
 
 The human-readable report includes the scan status, server overview, detected services, website configurations, DNS results, system information, and warnings.
 
@@ -79,7 +79,7 @@ go vet ./...
 - Apache discovery relies on `apachectl -S` or `httpd -S`; it does not fully parse every virtual-host directive.
 - Only Nginx and Apache website configurations are inspected. Caddy and Docker discovery are not currently implemented.
 - DNS results can differ from a simple server-IP comparison when a domain uses NAT, load balancers, CDNs, or multiple public IPs.
-- The tool is stateless and does not store scan history or credentials.
+- The tool does not store credentials. JSON scan history is stored locally in `scan-results.json` when JSON output is selected.
 
 ## Security
 

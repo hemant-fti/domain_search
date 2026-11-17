@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -15,10 +16,30 @@ import (
 const (
 	sectionLine = "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 	separator   = "────────────────────────────────────────────────────────────"
+
+	scanResultsFile = "scan-results.jsonl"
 )
 
 func writeJSON(result any, pretty bool) error {
-	encoder := json.NewEncoder(os.Stdout)
+	data, err := marshalJSON(result, pretty)
+	if err != nil {
+		return fmt.Errorf("encode JSON: %w", err)
+	}
+
+	if err := saveScanResult(result); err != nil {
+		return err
+	}
+
+	if _, err := os.Stdout.Write(data); err != nil {
+		return fmt.Errorf("write JSON output: %w", err)
+	}
+
+	return nil
+}
+
+func marshalJSON(result any, pretty bool) ([]byte, error) {
+	var output bytes.Buffer
+	encoder := json.NewEncoder(&output)
 	encoder.SetEscapeHTML(false)
 
 	if pretty {
@@ -26,13 +47,39 @@ func writeJSON(result any, pretty bool) error {
 	}
 
 	if err := encoder.Encode(result); err != nil {
-		return fmt.Errorf("encode JSON: %w", err)
+		return nil, err
+	}
+
+	return output.Bytes(), nil
+}
+
+func appendJSONResult(path string, result []byte) error {
+	file, err := os.OpenFile(
+		path,
+		os.O_APPEND|os.O_CREATE|os.O_WRONLY,
+		0644,
+	)
+	if err != nil {
+		return fmt.Errorf("open results file: %w", err)
+	}
+	defer file.Close()
+
+	// Ensure every JSON object occupies exactly one line.
+	result = bytes.TrimSpace(result)
+	result = append(result, '\n')
+
+	if _, err := file.Write(result); err != nil {
+		return fmt.Errorf("append JSONL result: %w", err)
 	}
 
 	return nil
 }
 
 func writeHuman(output io.Writer, result discovery.Result) error {
+	if err := saveScanResult(result); err != nil {
+		return err
+	}
+
 	var report strings.Builder
 
 	// Header.
@@ -228,11 +275,12 @@ func writeDomains(w io.Writer, result discovery.Result) {
 		writeRow(tw, "Listening ports", displayPorts(domain.Ports))
 		writeRow(tw, "DNS addresses", displayList(domain.DNS.ResolvedIPs))
 
-		if domain.DNS.Status == "matches_server" {
+		switch domain.DNS.Status {
+		case "matches_server":
 			writeRow(tw, "Points to this server", "Yes")
-		} else if domain.DNS.Status == "resolved_other_ip" {
+		case "resolved_other_ip":
 			writeRow(tw, "Points to this server", "No")
-		} else {
+		default:
 			writeRow(tw, "Points to this server", "Not verified")
 		}
 
@@ -461,14 +509,6 @@ func sslStatusLabel(enabled bool) string {
 	return "Not detected"
 }
 
-func formatBool(value bool) string {
-	if value {
-		return "Yes"
-	}
-
-	return "No"
-}
-
 func writeError(output *os.File, code string, err error) {
 	if err == nil {
 		return
@@ -485,4 +525,17 @@ func writeError(output *os.File, code string, err error) {
 	payload.Error.Message = err.Error()
 
 	_ = json.NewEncoder(output).Encode(payload)
+}
+
+func saveScanResult(result any) error {
+	data, err := marshalJSON(result, false)
+	if err != nil {
+		return fmt.Errorf("encode scan result: %w", err)
+	}
+
+	if err := appendJSONResult(scanResultsFile, data); err != nil {
+		return fmt.Errorf("save scan result to %s: %w", scanResultsFile, err)
+	}
+
+	return nil
 }

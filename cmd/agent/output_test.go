@@ -2,6 +2,9 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -98,5 +101,57 @@ func TestWriteHumanIncludesDiscoveryFields(t *testing.T) {
 		if !strings.Contains(output.String(), field) {
 			t.Errorf("human-readable output does not contain %q", field)
 		}
+	}
+}
+
+func TestAppendJSONResultPreservesPriorScans(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "scan-results.json")
+
+	first := map[string]string{"scan": "first"}
+	second := map[string]string{"scan": "second"}
+
+	for _, result := range []any{first, second} {
+		data, err := json.Marshal(result)
+		if err != nil {
+			t.Fatalf("json.Marshal() error = %v", err)
+		}
+		if err := appendJSONResult(path, data); err != nil {
+			t.Fatalf("appendJSONResult() error = %v", err)
+		}
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("os.ReadFile() error = %v", err)
+	}
+
+	var results []map[string]string
+	if err := json.Unmarshal(data, &results); err != nil {
+		t.Fatalf("json.Unmarshal() error = %v", err)
+	}
+
+	if len(results) != 2 || results[0]["scan"] != "first" || results[1]["scan"] != "second" {
+		t.Errorf("stored results = %#v, want both scans in order", results)
+	}
+}
+
+func TestAppendJSONResultDoesNotOverwriteInvalidExistingFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "scan-results.json")
+	original := []byte("{invalid")
+	if err := os.WriteFile(path, original, 0600); err != nil {
+		t.Fatalf("os.WriteFile() error = %v", err)
+	}
+
+	err := appendJSONResult(path, []byte(`{"scan":"new"}`))
+	if err == nil {
+		t.Fatal("appendJSONResult() error = nil, want invalid-file error")
+	}
+
+	data, readErr := os.ReadFile(path)
+	if readErr != nil {
+		t.Fatalf("os.ReadFile() error = %v", readErr)
+	}
+	if !bytes.Equal(data, original) {
+		t.Errorf("existing file changed to %q, want %q", data, original)
 	}
 }
