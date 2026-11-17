@@ -265,7 +265,7 @@ func writeDomains(w io.Writer, result discovery.Result) {
 		writeRow(tw, "Website directory", displayValue(domain.DocumentRoot))
 		writeRow(tw, "Proxy destination", displayValue(domain.ProxyTarget))
 		writeRow(tw, "SSL certificate", displayValue(domain.SSLCertificate))
-		writeRow(tw, "Other domain names", displayList(domain.Aliases))
+		writeRow(tw, "Aliases", displayList(domain.Aliases))
 		writeRow(tw, "Listening ports", displayPorts(domain.Ports))
 
 		flushTable(tw)
