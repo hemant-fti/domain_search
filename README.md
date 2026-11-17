@@ -1,124 +1,87 @@
 # DomainScout
 
-DomainScout has two execution modes that share the same discovery engine and JSON result model:
+DomainScout is a Go command-line tool that scans the local Linux server for Nginx and Apache website configuration, checks discovered domain names through DNS, and collects server and system information.
 
-1. **API mode** — connect to another Linux server over SSH using the HTTP API.
-2. **Agent mode** — run a standalone binary directly on the Linux server being inspected. No SSH connection or Go installation is required on that server.
-
-Discovery is configuration-based: it inspects Nginx, Apache, Caddy and Docker, then optionally verifies discovered names through DNS. A configured hostname is not proof that a website is publicly reachable.
+The scan runs on the machine being inspected. This repository currently provides a local CLI; it does not include an HTTP API or an SSH client.
 
 ## Requirements
 
-- Go 1.22+ to build from source.
-- Agent runtime: Linux with `/bin/sh` and the relevant service configuration/tools installed.
-- Root or appropriate read permissions are recommended. Some inspectors attempt `sudo -n` for privileged configuration output.
-- DNS verification requires network/DNS access. The scan still reports discovered configuration when DNS lookup fails.
+- Go 1.26 or later to build from source (see `go.mod`).
+- A Linux host with `/bin/sh` to run a scan.
+- Nginx and/or Apache command-line tools to inspect those services. Missing tools or inaccessible configuration may result in warnings or incomplete results.
+- DNS/network access for DNS verification.
 
-## Build the standalone agent
+Root access is not required for every field. Some configuration checks retry with `sudo -n`; run with appropriate privileges if you need to inspect protected service configuration.
 
-Build on your development machine for the target server architecture:
+## Build
+
+Build for the current host:
 
 ```bash
-# Linux x86_64 / AMD64
+go build -o domain-scout ./cmd/agent
+```
+
+Build a Linux AMD64 binary from a host with GNU Make:
+
+```bash
 make build-linux-amd64
-
-# Linux ARM64
-make build-linux-arm64
-
-# Build both Linux architectures
-./scripts/build.sh
 ```
 
-The binaries are written to `dist/`. The target server does not need Go installed.
+That target writes `dist/domain-scout-linux-amd64`. Copy the binary to the Linux server you want to scan. Go is not needed on the target server.
 
-Copy the correct binary to the target server, then run:
-
-```bash
-chmod +x domain-scout-linux-amd64
-sudo ./domain-scout-linux-amd64 scan --json
-```
-
-Other commands:
+## Run a scan
 
 ```bash
+# Human-readable report
+./domain-scout scan
+
+# Indented JSON
+./domain-scout scan --json
+
 # Compact JSON
-sudo ./domain-scout-linux-amd64 scan --compact
+./domain-scout scan --compact
 
-# Save the JSON response
-sudo ./domain-scout-linux-amd64 scan --json > domains.json
+# Set the maximum scan duration
+./domain-scout scan --timeout 3m
 
-# Set a scan timeout
-sudo ./domain-scout-linux-amd64 scan --timeout 3m
-
-# Print version
-./domain-scout-linux-amd64 version
+# Print the CLI version
+./domain-scout version
 ```
 
-`scan --json` writes the discovery result to stdout. Diagnostics and usage information go to stderr. On a fatal scan error, stdout contains an API-style JSON error object and the process exits with status 1. Invalid command-line usage exits with status 2.
+The default scan timeout is two minutes. `--pretty` also selects JSON output; `--compact` selects compact JSON. The CLI writes scan results to stdout. On a scan or command error it writes a JSON error object to stdout and exits with a non-zero status.
 
-### Agent JSON response
+The human-readable report includes the scan status, server overview, detected services, website configurations, DNS results, system information, and warnings.
 
-The agent serializes the same `discovery.Result` model returned by `POST /api/v1/discoveries`. In addition to the existing `status`, `scanned_at`, `server`, `detected_services`, `total_domains`, `domains`, and optional `warnings`, the response includes:
+## JSON output
 
-- `servers`: installed web/container services, their actual running state, and structured domains with aliases, config files, document roots, and listening ports.
-- `system`: hostname, IP addresses, MAC, OS, CPU, uptime, user, timezone, disk, and memory information.
+The JSON response includes:
 
-The added fields are top-level and additive, so existing API response fields remain available. CPU `cores` counts physical cores when `lscpu` is available; `threads` counts online logical CPUs. Disk values describe the root filesystem. Disk and memory values labeled `*_gb` use GiB (bytes divided by 1024^3); unavailable metrics remain zero/empty and are described in `warnings`. Missing IP or domain lists are returned as empty arrays.
+- `status`, `scanned_at`, and `warnings`.
+- `server`: hostname, operating system, kernel, and primary IP address.
+- `detected_services` and `total_domains`.
+- `servers`: detected web services, their running state, and reported domains, aliases, configuration files, document roots, and listening ports.
+- `system`: network addresses, OS and CPU details, uptime, user, timezone, disk, and memory information.
+- `domains`: discovered website configuration and DNS status, including resolved IP addresses.
 
-## Run the HTTP API
+Disk and memory fields ending in `_gb` are reported in GiB (bytes divided by 1024^3). DNS matching compares resolved addresses with the server's detected primary IP; a DNS match does not establish that a website is reachable.
+
+## Checks
 
 ```bash
-go mod tidy
-go run ./cmd/api
-```
-
-The API listens on `:8080` by default.
-
-### Endpoints
-
-- `GET /api/v1/health`
-- `POST /api/v1/servers/test-connection`
-- `POST /api/v1/discoveries`
-
-Example discovery request:
-
-```json
-{
-  "host": "203.0.113.10",
-  "port": 22,
-  "username": "deploy",
-  "auth_type": "private_key",
-  "private_key": "-----BEGIN OPENSSH PRIVATE KEY-----\\n...\\n-----END OPENSSH PRIVATE KEY-----",
-  "known_hosts": "/app/ssh/known_hosts"
-}
-```
-
-For password authentication, send `auth_type: "password"` and `password` instead.
-
-The `known_hosts` path is on the machine running the API, not on the remote server. Populate it using a trusted out-of-band host-key verification process. Do not blindly trust `ssh-keyscan` output from an untrusted network.
-
-## Tests and quality checks
-
-```bash
-gofmt -w cmd service pkg
 go test ./...
 go vet ./...
 ```
 
 ## Current limitations
 
-- The agent currently targets Linux. It uses `/bin/sh` to run the same inspection commands as the SSH mode.
-- Apache discovery uses `apachectl -S` / `httpd -S` output and is not a complete parser for every virtual-host directive.
-- Caddy parsing is basic and does not fully resolve imported snippets or every JSON configuration form.
-- Nginx `nginx -T` may require elevated permissions.
-- Docker label discovery supports common hostname/rule labels but not every reverse-proxy convention.
-- DNS matching compares returned addresses with the server's detected primary interface IP. NAT, load balancers, CDNs, and multiple public IPs can affect this comparison.
-- The first version is stateless and does not store credentials, servers, or discovery history.
+- Scans run locally and require `/bin/sh`; remote SSH scanning and an HTTP API are not implemented.
+- Nginx discovery uses `nginx -T` and basic configuration parsing. It may require elevated privileges and may not recognize every valid configuration pattern.
+- Apache discovery relies on `apachectl -S` or `httpd -S`; it does not fully parse every virtual-host directive.
+- Only Nginx and Apache website configurations are inspected. Caddy and Docker discovery are not currently implemented.
+- DNS results can differ from a simple server-IP comparison when a domain uses NAT, load balancers, CDNs, or multiple public IPs.
+- The tool is stateless and does not store scan history or credentials.
 
 ## Security
 
-- Run the agent with the least privilege that still permits reading the relevant service configurations. Root may be needed for complete inspection on some hosts.
-- The agent executes a fixed set of read-only inspection commands through `/bin/sh`; do not modify it to accept arbitrary shell commands from untrusted input.
-- Do not expose the API publicly without authentication, rate limiting, audit logging, and network restrictions.
-- SSH host-key verification is mandatory in API mode.
-- Never log SSH passwords, private keys, or passphrases.
+- Run the scanner with only the privileges needed to read the relevant service configuration.
+- DNS verification requires network access.

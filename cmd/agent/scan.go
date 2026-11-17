@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -19,19 +20,21 @@ const defaultTimeout = 2 * time.Minute
 
 func newScanCommand() *cobra.Command {
 	var (
-		pretty  bool
-		compact bool
-		timeout time.Duration
+		jsonOutput bool
+		pretty     bool
+		compact    bool
+		timeout    time.Duration
 	)
 
 	cmd := &cobra.Command{
 		Use:   "scan",
 		Short: "Discover services and system information",
-		Long:  "Scan the local server and return discovered services and system information as JSON.",
+		Long:  "Scan the local server and display discovered services and system information in a human-readable format. Use --json for JSON output.",
 		Example: `  domain-scout scan
+  domain-scout scan --json
   domain-scout scan --compact
   domain-scout scan --timeout 5m
-  sudo domain-scout scan --compact > result.json`,
+  sudo domain-scout scan --json > result.json`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if timeout <= 0 {
@@ -45,19 +48,21 @@ func newScanCommand() *cobra.Command {
 			ctx, cancel := context.WithTimeout(cmd.Context(), timeout)
 			defer cancel()
 
-			return runDiscovery(ctx, pretty)
+			useJSON := jsonOutput || compact ||
+				cmd.Flags().Changed("pretty")
+			return runDiscovery(ctx, useJSON, pretty)
 		},
 	}
 
-	cmd.Flags().Bool("json", false, "emit JSON output (compatibility flag)")
-	cmd.Flags().BoolVar(&pretty, "pretty", true, "format JSON with indentation")
-	cmd.Flags().BoolVar(&compact, "compact", false, "emit compact JSON")
+	cmd.Flags().BoolVar(&jsonOutput, "json", false, "emit JSON output instead of human-readable text")
+	cmd.Flags().BoolVar(&pretty, "pretty", true, "indent JSON output (implies --json)")
+	cmd.Flags().BoolVar(&compact, "compact", false, "emit compact JSON output")
 	cmd.Flags().DurationVar(&timeout, "timeout", defaultTimeout, "maximum scan duration")
 
 	return cmd
 }
 
-func runDiscovery(ctx context.Context, pretty bool) error {
+func runDiscovery(ctx context.Context, useJSON, pretty bool) error {
 	registry := []inspectors.Inspector{
 		nginx.New(),
 		apache.New(),
@@ -71,7 +76,11 @@ func runDiscovery(ctx context.Context, pretty bool) error {
 		return fmt.Errorf("discovery failed: %w", err)
 	}
 
-	if err := writeJSON(result, pretty); err != nil {
+	if useJSON {
+		if err := writeJSON(result, pretty); err != nil {
+			return fmt.Errorf("write discovery result: %w", err)
+		}
+	} else if err := writeHuman(os.Stdout, result); err != nil {
 		return fmt.Errorf("write discovery result: %w", err)
 	}
 
