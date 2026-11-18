@@ -10,6 +10,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"domain-search/internal/discovery"
 	ssh "domain-search/internal/os"
 	"domain-search/internal/ports"
 )
@@ -117,7 +118,7 @@ type serviceRecord struct {
 var serviceNamePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.@:-]*$`)
 
 func listServices(ctx context.Context, ex ssh.Executor) ([]serviceRecord, error) {
-	if err := ensureLinux("system service inspection"); err != nil {
+	if err := discovery.EnsureLinux("system service inspection"); err != nil {
 		return nil, err
 	}
 	if _, err := ex.Run(ctx, "systemctl --version"); err != nil {
@@ -204,7 +205,7 @@ func newServicesListCommand() *cobra.Command {
 func newServiceStatusCommand() *cobra.Command {
 	var serviceName string
 	cmd := newResultCommand("status <service>", "Show active and enabled state for a service", func(ctx context.Context, _ *cobra.Command) (commandResult, error) {
-		if err := ensureLinux("system service inspection"); err != nil {
+		if err := discovery.EnsureLinux("system service inspection"); err != nil {
 			return commandResult{}, err
 		}
 		name := serviceName

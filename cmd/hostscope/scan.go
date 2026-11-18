@@ -14,10 +14,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"domain-search/internal/discovery"
-	"domain-search/internal/inspectors"
-	"domain-search/internal/inspectors/apache"
-	"domain-search/internal/inspectors/nginx"
-	"domain-search/internal/inspectors/system"
 	ssh "domain-search/internal/os"
 )
 
@@ -117,13 +113,7 @@ func validateScanOutputPath(path string) error {
 }
 
 func runDiscovery(cmd *cobra.Command, ctx context.Context, outputPath string, useJSON, pretty bool) error {
-	registry := []inspectors.Inspector{
-		nginx.New(),
-		apache.New(),
-		system.New(),
-	}
-
-	service := discovery.NewService(registry)
+	service := discovery.NewLocalService()
 
 	result, err := service.Discover(ctx, ssh.NewLocalExecutor())
 	if err != nil {

@@ -9,6 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"domain-search/internal/discovery"
 	"domain-search/internal/inspectors/system"
 	ssh "domain-search/internal/os"
 	"domain-search/internal/server"
@@ -19,18 +20,10 @@ type systemCommandResult struct {
 	Warnings []string `json:"warnings,omitempty"`
 }
 
-func collectSystem(ctx context.Context) (server.SystemInfo, []string, error) {
-	info, warnings, err := system.New().Collect(ctx, ssh.NewLocalExecutor())
-	if err != nil {
-		return info, warnings, fmt.Errorf("collect system information: %w", err)
-	}
-	return info, warnings, nil
-}
-
 func newSystemInfoCommand() *cobra.Command {
 	var all, details bool
 	cmd := newResultCommand("info", "Show system identity and resource information", func(ctx context.Context, _ *cobra.Command) (commandResult, error) {
-		info, warnings, err := collectSystem(ctx)
+		info, warnings, err := discovery.NewLocalService().CollectSystem(ctx, ssh.NewLocalExecutor())
 		if err != nil {
 			return commandResult{}, err
 		}

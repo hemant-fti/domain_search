@@ -12,6 +12,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"domain-search/internal/discovery"
 	"domain-search/internal/inspectors"
 	ssh "domain-search/internal/os"
 )
@@ -29,15 +30,10 @@ type localCertificate struct {
 }
 
 func configuredCertificates(ctx context.Context, domainFilter string) ([]localCertificate, error) {
-	var domains []inspectors.Domain
-	for _, name := range []string{"nginx", "apache"} {
-		result, err := inspectWeb(ctx, name, true, false, false)
-		if err != nil {
-			return nil, err
-		}
-		if result.Detected {
-			domains = append(domains, result.Domains...)
-		}
+	service := discovery.NewLocalService()
+	domains, err := service.DiscoverDomains(ctx, ssh.NewLocalExecutor(), []string{"nginx", "apache"})
+	if err != nil {
+		return nil, err
 	}
 
 	var certificates []localCertificate
@@ -155,9 +151,6 @@ func newCertificateCommand(use string) *cobra.Command {
 func newConfigServerCommand(name string) *cobra.Command {
 	var test, virtualHosts bool
 	cmd := newResultCommand(name, "Inspect "+name+" configuration without printing its contents", func(ctx context.Context, _ *cobra.Command) (commandResult, error) {
-		if err := ensureLinux("web server configuration inspection"); err != nil {
-			return commandResult{}, err
-		}
 		result := struct {
 			Server       string              `json:"server"`
 			TestOutput   string              `json:"test_output,omitempty"`
@@ -167,18 +160,17 @@ func newConfigServerCommand(name string) *cobra.Command {
 
 		ex := ssh.NewLocalExecutor()
 		if test {
-			commands := []string{"nginx -t 2>&1"}
-			if name == "apache" {
-				commands = []string{"apachectl configtest 2>&1", "httpd -t 2>&1"}
-			}
-			output, err := runFirstCommand(ctx, ex, commands)
+			output, err := discovery.NewLocalService().TestConfig(ctx, ex, name)
 			if err != nil {
-				return commandResult{}, fmt.Errorf("test %s configuration: %w", name, err)
+				return commandResult{}, err
 			}
-			result.TestOutput = strings.TrimSpace(output)
+			result.TestOutput = output
 		}
 
-		inspection, err := inspectWeb(ctx, name, virtualHosts, true, false)
+		inspection, err := discovery.NewLocalService().Inspect(ctx, ex, name, discovery.InspectOptions{
+			Domains: virtualHosts,
+			Config:  true,
+		})
 		if err != nil {
 			return commandResult{}, err
 		}

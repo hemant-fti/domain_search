@@ -3,114 +3,15 @@ package main
 import (
 	"context"
 	"fmt"
-	"runtime"
 	"strings"
 
 	"github.com/spf13/cobra"
 
+	"domain-search/internal/discovery"
 	"domain-search/internal/dns"
 	"domain-search/internal/inspectors"
-	"domain-search/internal/inspectors/apache"
-	"domain-search/internal/inspectors/nginx"
 	ssh "domain-search/internal/os"
 )
-
-type webResult struct {
-	Server   string              `json:"server"`
-	Detected bool                `json:"detected"`
-	Running  bool                `json:"running"`
-	Version  string              `json:"version,omitempty"`
-	Configs  []string            `json:"config_paths,omitempty"`
-	Domains  []inspectors.Domain `json:"domains,omitempty"`
-}
-
-func ensureLinux(operation string) error {
-	if runtime.GOOS != "linux" {
-		return fmt.Errorf("%s is supported only on Linux", operation)
-	}
-	return nil
-}
-
-func inspectWeb(ctx context.Context, name string, includeDomains, includeConfig, includeVersion bool) (webResult, error) {
-	if err := ensureLinux("web server inspection"); err != nil {
-		return webResult{}, err
-	}
-
-	executor := ssh.NewLocalExecutor()
-	var detector interface {
-		Detect(context.Context, ssh.Executor) (bool, error)
-		Discover(context.Context, ssh.Executor) ([]inspectors.Domain, error)
-	}
-	var running func(context.Context, ssh.Executor) (bool, error)
-	command := name
-	if name == "nginx" {
-		instance := nginx.New()
-		detector = instance
-		running = instance.Running
-	} else {
-		instance := apache.New()
-		detector = instance
-		running = instance.Running
-		command = "apachectl"
-	}
-
-	result := webResult{Server: name, Domains: []inspectors.Domain{}}
-	detected, err := detector.Detect(ctx, executor)
-	if err != nil {
-		return result, fmt.Errorf("detect %s: %w", name, err)
-	}
-	result.Detected = detected
-	if !detected {
-		return result, nil
-	}
-
-	result.Running, err = running(ctx, executor)
-	if err != nil {
-		return result, fmt.Errorf("check %s status: %w", name, err)
-	}
-	if includeDomains || includeConfig {
-		result.Domains, err = detector.Discover(ctx, executor)
-		if err != nil {
-			return result, fmt.Errorf("discover %s configuration: %w", name, err)
-		}
-		if includeConfig {
-			seen := make(map[string]bool)
-			for _, domain := range result.Domains {
-				if domain.ConfigPath != "" && !seen[domain.ConfigPath] {
-					seen[domain.ConfigPath] = true
-					result.Configs = append(result.Configs, domain.ConfigPath)
-				}
-			}
-		}
-	}
-	if includeVersion {
-		commands := []string{command + " -v 2>&1"}
-		if name == "apache" {
-			commands = append(commands, "httpd -v 2>&1")
-		}
-		output, err := runFirstCommand(ctx, executor, commands)
-		if err != nil {
-			return result, fmt.Errorf("read %s version: %w", name, err)
-		}
-		result.Version = strings.TrimSpace(output)
-	}
-	return result, nil
-}
-
-func runFirstCommand(ctx context.Context, executor ssh.Executor, commands []string) (string, error) {
-	var lastErr error
-	for _, command := range commands {
-		output, err := executor.Run(ctx, command)
-		if err == nil {
-			return output, nil
-		}
-		if ctx.Err() != nil {
-			return "", ctx.Err()
-		}
-		lastErr = err
-	}
-	return "", lastErr
-}
 
 func newWebListCommand() *cobra.Command {
 	return newWebInspectionCommand("list", "List installed Nginx and Apache servers", "")
@@ -131,9 +32,15 @@ func newWebInspectionCommand(use, short, name string) *cobra.Command {
 		if name == "" {
 			names = []string{"nginx", "apache"}
 		}
-		results := make([]webResult, 0, len(names))
+		results := make([]discovery.Inspection, 0, len(names))
+		service := discovery.NewLocalService()
+		executor := ssh.NewLocalExecutor()
 		for _, serverName := range names {
-			result, err := inspectWeb(ctx, serverName, domains, config, versionFlag)
+			result, err := service.Inspect(ctx, executor, serverName, discovery.InspectOptions{
+				Domains: domains,
+				Config:  config,
+				Version: versionFlag,
+			})
 			if err != nil {
 				return commandResult{}, err
 			}
@@ -193,8 +100,10 @@ func newDomainsCommandForServer(use, serverName string) *cobra.Command {
 			names = []string{serverFilter}
 		}
 		domains := make([]inspectors.Domain, 0)
+		service := discovery.NewLocalService()
+		executor := ssh.NewLocalExecutor()
 		for _, name := range names {
-			result, err := inspectWeb(ctx, name, true, false, false)
+			result, err := service.Inspect(ctx, executor, name, discovery.InspectOptions{Domains: true})
 			if err != nil {
 				return commandResult{}, err
 			}
