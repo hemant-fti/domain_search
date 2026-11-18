@@ -12,7 +12,7 @@ import (
 	"domain-search/internal/server"
 )
 
-func collectSystemInfo(ctx context.Context) (server.SystemInfo, []string, error) {
+func CollectSystemInfo(ctx context.Context) (server.SystemInfo, []string, error) {
 	info := server.SystemInfo{
 		IPv4: []string{},
 		IPv6: []string{},

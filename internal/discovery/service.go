@@ -34,7 +34,6 @@ func NewLocalService() *Service {
 	return NewService([]inspectors.Inspector{
 		nginx.New(),
 		apache.New(),
-		system.New(),
 	})
 }
 
@@ -51,20 +50,12 @@ func EnsureLinux(operation string) error {
 	return nil
 }
 
-func (s *Service) CollectSystem(ctx context.Context, ex osExec.Executor) (server.SystemInfo, []string, error) {
-	for _, inspector := range s.inspectors {
-		if inspector.Name() != "system" {
-			continue
-		}
-		if collector, ok := inspector.(systemCollector); ok {
-			info, warnings, err := collector.Collect(ctx, ex)
-			if err != nil {
-				return info, warnings, fmt.Errorf("collect system information: %w", err)
-			}
-			return info, warnings, nil
-		}
+func (s *Service) CollectSystem(ctx context.Context, _ osExec.Executor) (server.SystemInfo, []string, error) {
+	info, warnings, err := system.CollectSystemInfo(ctx)
+	if err != nil {
+		return info, warnings, fmt.Errorf("collect system information: %w", err)
 	}
-	return server.SystemInfo{}, nil, fmt.Errorf("system collector is not configured")
+	return info, warnings, nil
 }
 
 func (s *Service) Inspect(ctx context.Context, ex osExec.Executor, name string, options InspectOptions) (Inspection, error) {
@@ -202,27 +193,21 @@ func (s *Service) Discover(
 
 	var found []inspectors.Domain
 
+	systemInfo, warnings, collectErr := system.CollectSystemInfo(ctx)
+	result.System = systemInfo
+	appendWarnings(&result, warnings)
+	if collectErr != nil {
+		if ctx.Err() != nil {
+			return result, ctx.Err()
+		}
+		appendWarnings(&result, []string{
+			"system information: " + collectErr.Error(),
+		})
+	}
+
 	for _, inspector := range s.inspectors {
 		if err := ctx.Err(); err != nil {
 			return result, err
-		}
-
-		// Collect detailed system information when supported.
-		if collector, ok := inspector.(systemCollector); ok {
-			systemInfo, warnings, collectErr := collector.Collect(ctx, ex)
-
-			result.System = systemInfo
-			appendWarnings(&result, warnings)
-
-			if collectErr != nil {
-				if ctx.Err() != nil {
-					return result, ctx.Err()
-				}
-
-				appendWarnings(&result, []string{
-					inspector.Name() + " information: " + collectErr.Error(),
-				})
-			}
 		}
 
 		// Detect installed service.

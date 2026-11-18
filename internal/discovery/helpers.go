@@ -5,17 +5,7 @@ import (
 
 	"domain-search/internal/inspectors"
 	osExec "domain-search/internal/os"
-	"domain-search/internal/server"
 )
-
-// systemCollector is implemented by inspectors that collect
-// detailed system information.
-type systemCollector interface {
-	Collect(
-		context.Context,
-		osExec.Executor,
-	) (server.SystemInfo, []string, error)
-}
 
 // statusInspector checks whether a service is running.
 type statusInspector interface {

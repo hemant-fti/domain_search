@@ -5,20 +5,8 @@ import (
 	"testing"
 )
 
-type resultExecutor struct {
-	output string
-}
-
-func (e resultExecutor) Run(context.Context, string) (string, error) {
-	return e.output, nil
-}
-
-func (e resultExecutor) ReadFiles(context.Context, []string) (map[string]string, error) {
-	return nil, nil
-}
-
 func TestCollectParsesStructuredSystemInformation(t *testing.T) {
-	info, warnings, err := New().Collect(context.Background(), resultExecutor{})
+	info, warnings, err := CollectSystemInfo(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -32,7 +20,7 @@ func TestCollectParsesStructuredSystemInformation(t *testing.T) {
 }
 
 func TestCollectKeepsAddressListsInitialized(t *testing.T) {
-	info, warnings, err := New().Collect(context.Background(), resultExecutor{})
+	info, warnings, err := CollectSystemInfo(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
