@@ -85,7 +85,7 @@ func TestResultCommandWritesSelectedOutputFile(t *testing.T) {
 }
 
 func TestScanOutputCannotOverwriteHistory(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "scan-results.jsonl")
+	path := filepath.Join(t.TempDir(), "scan-results.json")
 	original := scanResultsFile
 	scanResultsFile = path
 	t.Cleanup(func() { scanResultsFile = original })

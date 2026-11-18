@@ -9,5 +9,7 @@ bin/
 
 dom
 /hostscope
-/scan-errors.jsonl
-/scan-results.jsonl
+/scan-errors.json
+/scan-results.json
+/command-results.json
+/command-errors.json

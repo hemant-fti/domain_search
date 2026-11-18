@@ -14,8 +14,8 @@ import (
 )
 
 var (
-	commandResultsFile = "command-results.jsonl"
-	commandErrorsFile  = "command-errors.jsonl"
+	commandResultsFile = "command-results.json"
+	commandErrorsFile  = "command-errors.json"
 
 	commandLogMu sync.Mutex
 

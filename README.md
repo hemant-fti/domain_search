@@ -51,7 +51,7 @@ That target writes `dist/hostscope-linux-amd64`. Copy the binary to the Linux se
 ./hostscope version
 ```
 
-The default scan timeout is two minutes. `--pretty` also selects JSON output; `--compact` selects compact JSON. JSON scan results are written to stdout unless `--output` is specified; scan records are also appended to `scan-results.jsonl` in the current working directory as JSON Lines, preserving earlier runs. Warning and error events are recorded separately in `scan-errors.jsonl`. On an error, human-readable diagnostics go to stderr; JSON-mode errors are written as a JSON object to stdout. The CLI exits with a non-zero status.
+The default scan timeout is two minutes. `--pretty` also selects JSON output; `--compact` selects compact JSON. JSON scan results are written to stdout unless `--output` is specified; scan records are also appended to `scan-results.json` in the current working directory as JSON Lines, preserving earlier runs. Warning and error events are recorded separately in `scan-errors.json`. On an error, human-readable diagnostics go to stderr; JSON-mode errors are written as a JSON object to stdout. The CLI exits with a non-zero status.
 
 The human-readable report includes the scan status, server overview, detected services, website configurations, DNS results, system information, and warnings.
 
@@ -158,7 +158,7 @@ go vet ./...
 - Apache discovery relies on `apachectl -S` or `httpd -S`; it does not fully parse every virtual-host directive.
 - Only Nginx and Apache website configurations are inspected. Caddy and Docker discovery are not currently implemented.
 - DNS results can differ from a simple server-IP comparison when a domain uses NAT, load balancers, CDNs, or multiple public IPs.
-- The tool does not store credentials. Scan history is appended locally as JSON Lines in `scan-results.jsonl`.
+- The tool does not store credentials. Scan history is appended locally as JSON Lines in `scan-results.json`.
 
 ## Security
 

@@ -21,8 +21,8 @@ const (
 )
 
 var (
-	scanResultsFile = "scan-results.jsonl"
-	scanErrorsFile  = "scan-errors.jsonl"
+	scanResultsFile = "scan-results.json"
+	scanErrorsFile  = "scan-errors.json"
 )
 
 func writeJSONTo(output io.Writer, result any, pretty bool) error {
@@ -61,7 +61,7 @@ func marshalJSON(result any, pretty bool) ([]byte, error) {
 func appendJSONResult(path string, result []byte) (returnErr error) {
 	result = bytes.TrimSpace(result)
 	if !json.Valid(result) || len(result) == 0 || result[0] != '{' {
-		return fmt.Errorf("append JSONL result: record must be a valid JSON object")
+		return fmt.Errorf("append json result: record must be a valid JSON object")
 	}
 
 	file, err := os.OpenFile(
@@ -96,9 +96,9 @@ func appendJSONResult(path string, result []byte) (returnErr error) {
 	result = append(result, '\n')
 
 	if written, err := file.Write(result); err != nil {
-		return fmt.Errorf("append JSONL result: %w", err)
+		return fmt.Errorf("append json result: %w", err)
 	} else if written != len(result) {
-		return fmt.Errorf("append JSONL result: %w", io.ErrShortWrite)
+		return fmt.Errorf("append json result: %w", io.ErrShortWrite)
 	}
 
 	return nil
