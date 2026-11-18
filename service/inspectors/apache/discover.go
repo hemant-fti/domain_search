@@ -9,14 +9,8 @@ import (
 	ssh "domain-scout/service/os"
 )
 
-func discoverApache(
-	ctx context.Context,
-	ex ssh.Executor,
-) ([]inspectors.Domain, error) {
-
+func discoverApache(ctx context.Context, ex ssh.Executor) ([]inspectors.Domain, error) {
 	// Try Apache discovery without sudo first.
-	// Most Apache installations allow apachectl -S
-	// to inspect virtual hosts without elevated privileges.
 	commands := []string{
 		"apachectl -S 2>&1",
 		"httpd -S 2>&1",
@@ -29,6 +23,7 @@ func discoverApache(
 		lastErr error
 	)
 
+	// Discover Apache virtual hosts.
 	for _, command := range commands {
 		out, lastErr = ex.Run(ctx, command)
 
@@ -48,9 +43,10 @@ func discoverApache(
 		)
 	}
 
+	// Parse discovered virtual hosts.
 	domains := Parse(out)
 
-	// Collect unique Apache configuration paths.
+	// Collect unique configuration file paths.
 	paths := make([]string, 0, len(domains))
 	seen := make(map[string]bool)
 
@@ -69,35 +65,25 @@ func discoverApache(
 		return domains, nil
 	}
 
-	// Read all discovered VirtualHost configuration files.
-	script := "for f in " + shellPaths(paths) +
-		"; do printf '\\n# DOMAIN_SCOUT_CONFIG:%s\\n' \"$f\"; cat -- \"$f\"; done"
-
-	// Try without sudo first.
-	configs, configErr := ex.Run(
-		ctx,
-		"sh -c "+shellQuote(script),
-	)
+	// Read configuration files using the executor.
+	configs, configErr := ex.ReadFiles(ctx, paths)
 
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}
 
-	// Retry with non-interactive sudo if necessary.
-	if configErr != nil {
-		configs, configErr = ex.Run(
-			ctx,
-			"sudo -n sh -c "+shellQuote(script),
-		)
-	}
+	// Read configuration files and enrich discovered domains.
+	if len(configs) > 0 {
+		combinedConfig := ""
 
-	if ctx.Err() != nil {
-		return nil, ctx.Err()
-	}
+		for _, path := range paths {
+			if config, exists := configs[path]; exists {
+				combinedConfig += "\n# DOMAIN_SCOUT_CONFIG:" + path + "\n"
+				combinedConfig += config + "\n"
+			}
+		}
 
-	// Enrich discovered websites with configuration data.
-	if configs != "" {
-		applyDocumentRoots(domains, configs)
+		applyDocumentRoots(domains, combinedConfig)
 	}
 
 	if configErr != nil {

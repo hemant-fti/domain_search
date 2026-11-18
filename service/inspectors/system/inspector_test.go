@@ -14,6 +14,10 @@ func (e resultExecutor) Run(context.Context, string) (string, error) {
 	return e.output, nil
 }
 
+func (e resultExecutor) ReadFiles(context.Context, []string) (map[string]string, error) {
+	return nil, nil
+}
+
 func TestCollectParsesStructuredSystemInformation(t *testing.T) {
 	executor := resultExecutor{output: `HOSTNAME=Tirth
 IPV4=127.0.0.1,172.23.95.136

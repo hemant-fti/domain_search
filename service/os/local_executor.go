@@ -3,6 +3,7 @@ package ssh
 import (
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 )
 
@@ -32,4 +33,18 @@ func (e *LocalExecutor) Run(ctx context.Context, command string) (string, error)
 	}
 
 	return string(output), nil
+}
+
+func (e *LocalExecutor) ReadFiles(ctx context.Context, paths []string) (map[string]string, error) {
+	configs := make(map[string]string)
+
+	for _, path := range paths {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return nil, err
+		}
+		configs[path] = string(data)
+	}
+
+	return configs, nil
 }
