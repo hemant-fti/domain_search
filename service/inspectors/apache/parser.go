@@ -8,9 +8,8 @@ import (
 )
 
 var (
-	vhost = regexp.MustCompile(`(?i)\bnamevhost\s+([^\s]+)\s+\((.+):\d+\)`)
+	vhost = regexp.MustCompile(`(?i)port\s+(\d+)\s+namevhost\s+([^\s]+)\s+\((.+):\d+\)`)
 	alias = regexp.MustCompile(`(?i)^\s*alias\s+([^\s]+)`)
-	port  = regexp.MustCompile(`(?i)(?:\*:(\d+)|\bport\s+(\d+))`)
 )
 
 func Parse(text string) []inspectors.Domain {
@@ -18,26 +17,43 @@ func Parse(text string) []inspectors.Domain {
 	var current *inspectors.Domain
 
 	for _, line := range strings.Split(text, "\n") {
-		if match := vhost.FindStringSubmatch(line); len(match) > 2 {
-			domain := inspectors.Domain{
-				Name:       match[1],
-				Source:     "apache",
-				ConfigPath: strings.TrimSpace(match[2]),
-				Aliases:    []string{},
-				Ports:      []int{},
+		line = strings.TrimRight(line, "\r")
+
+		// Detect a new Apache VirtualHost.
+		if match := vhost.FindStringSubmatch(line); len(match) == 4 {
+			portNumber, err := strconv.Atoi(match[1])
+			if err != nil || portNumber < 1 || portNumber > 65535 {
+				current = nil
+				continue
 			}
 
-			if matches := port.FindStringSubmatch(line); len(matches) > 2 {
-				portNumber := matches[1]
+			domain := inspectors.Domain{
+				Name:       strings.TrimSpace(match[2]),
+				Source:     "apache",
+				ConfigPath: strings.TrimSpace(match[3]),
+				Aliases:    []string{},
+				Ports:      []int{portNumber},
+			}
 
-				if portNumber == "" {
-					portNumber = matches[2]
+			// Avoid duplicate VirtualHost entries.
+			var existing *inspectors.Domain
+
+			for i := range result {
+				if result[i].Name == domain.Name &&
+					result[i].ConfigPath == domain.ConfigPath {
+					existing = &result[i]
+					break
+				}
+			}
+
+			if existing != nil {
+				current = existing
+
+				if !containsPort(current.Ports, portNumber) {
+					current.Ports = append(current.Ports, portNumber)
 				}
 
-				if value, err := strconv.Atoi(portNumber); err == nil &&
-					value > 0 && value <= 65535 {
-					domain.Ports = append(domain.Ports, value)
-				}
+				continue
 			}
 
 			result = append(result, domain)
@@ -50,13 +66,35 @@ func Parse(text string) []inspectors.Domain {
 			continue
 		}
 
-		if match := alias.FindStringSubmatch(line); len(match) > 1 {
-			current.Aliases = append(
-				current.Aliases,
-				strings.TrimSpace(match[1]),
-			)
+		// Extract aliases belonging to the current VirtualHost.
+		if match := alias.FindStringSubmatch(line); len(match) == 2 {
+			hostname := strings.TrimSpace(match[1])
+
+			if hostname != "" && !containsAlias(current.Aliases, hostname) {
+				current.Aliases = append(current.Aliases, hostname)
+			}
 		}
 	}
 
 	return result
+}
+
+func containsAlias(aliases []string, hostname string) bool {
+	for _, existing := range aliases {
+		if strings.EqualFold(existing, hostname) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func containsPort(ports []int, port int) bool {
+	for _, existing := range ports {
+		if existing == port {
+			return true
+		}
+	}
+
+	return false
 }
