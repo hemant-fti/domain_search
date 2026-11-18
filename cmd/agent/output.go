@@ -20,7 +20,10 @@ const (
 	separator   = "────────────────────────────────────────────────────────────"
 )
 
-var scanResultsFile = "scan-results.jsonl"
+var (
+	scanResultsFile = "scan-results.jsonl"
+	scanErrorsFile  = "scan-errors.jsonl"
+)
 
 func writeJSON(result any, pretty bool) error {
 	data, err := marshalJSON(result, pretty)
@@ -524,57 +527,58 @@ func writeError(output io.Writer, code string, err error, jsonMode bool) error {
 		outputErr = fmt.Errorf("write human-readable error output: %w", err)
 	}
 
-	logErr := appendJSONEvent(scanResultsFile, event)
+	logErr := appendJSONEvent(scanErrorsFile, event)
 	return errors.Join(outputErr, logErr)
 }
 
 func saveScanResult(result any) error {
-	recordResult := result
-	if scan, ok := result.(discovery.Result); ok {
-		warnings := scan.Warnings
-		scan.Warnings = make([]string, 0, len(scan.Warnings))
-		for _, warning := range warnings {
-			scan.Warnings = append(
-				scan.Warnings,
-				discovery.WarningEvent(warning).Message,
-			)
-		}
-		recordResult = scan
-	}
-
-	data, err := marshalJSON(recordResult, false)
+	data, err := marshalJSON(result, false)
 	if err != nil {
 		return fmt.Errorf("encode scan result: %w", err)
 	}
+
 	var record map[string]json.RawMessage
 	if err := json.Unmarshal(data, &record); err != nil {
 		return fmt.Errorf("prepare scan result record: %w", err)
 	}
+
+	delete(record, "warnings")
+	delete(record, "error_events")
+
 	recordType, err := json.Marshal("scan_result")
 	if err != nil {
 		return fmt.Errorf("encode scan result type: %w", err)
 	}
+
 	record["type"] = recordType
 	data, err = json.Marshal(record)
 	if err != nil {
 		return fmt.Errorf("encode scan result record: %w", err)
 	}
 
+	// Save only the scan result.
 	if err := appendJSONResult(scanResultsFile, data); err != nil {
 		return fmt.Errorf("save scan result to %s: %w", scanResultsFile, err)
 	}
 
+	// Save warning/error events separately.
 	if scan, ok := result.(discovery.Result); ok {
 		events := scan.ErrorEvents
 		if len(events) != len(scan.Warnings) {
 			events = make([]discovery.ScanError, 0, len(scan.Warnings))
+
 			for _, warning := range scan.Warnings {
 				events = append(events, discovery.WarningEvent(warning))
 			}
 		}
+
 		for _, event := range events {
-			if err := appendJSONEvent(scanResultsFile, event); err != nil {
-				return fmt.Errorf("save warning event to %s: %w", scanResultsFile, err)
+			if err := appendJSONEvent(scanErrorsFile, event); err != nil {
+				return fmt.Errorf(
+					"save warning event to %s: %w",
+					scanErrorsFile,
+					err,
+				)
 			}
 		}
 	}

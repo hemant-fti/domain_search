@@ -18,9 +18,15 @@ import (
 )
 
 func TestWriteHumanIncludesDiscoveryFields(t *testing.T) {
-	originalPath := scanResultsFile
+	dir := t.TempDir()
+	originalResultsPath := scanResultsFile
+	originalErrorsPath := scanErrorsFile
 	scanResultsFile = filepath.Join(t.TempDir(), "scan-results.jsonl")
-	t.Cleanup(func() { scanResultsFile = originalPath })
+	scanErrorsFile = filepath.Join(dir, "scan-errors.jsonl")
+	t.Cleanup(func() {
+		scanResultsFile = originalResultsPath
+		scanErrorsFile = originalErrorsPath
+	})
 
 	result := discovery.Result{
 		ScanResponse: discovery.ScanResponse{
@@ -235,11 +241,18 @@ func TestAppendJSONResultDoesNotOverwriteInvalidExistingFile(t *testing.T) {
 	}
 }
 
-func TestSaveScanResultAppendsScanAndWarningEvents(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "scan-results.jsonl")
-	originalPath := scanResultsFile
-	scanResultsFile = path
-	t.Cleanup(func() { scanResultsFile = originalPath })
+func TestSaveScanResultSeparatesScanAndWarningEvents(t *testing.T) {
+	dir := t.TempDir()
+	resultsPath := filepath.Join(dir, "scan-results.jsonl")
+	errorsPath := filepath.Join(dir, "scan-errors.jsonl")
+	originalResultsPath := scanResultsFile
+	originalErrorsPath := scanErrorsFile
+	scanResultsFile = resultsPath
+	scanErrorsFile = errorsPath
+	t.Cleanup(func() {
+		scanResultsFile = originalResultsPath
+		scanErrorsFile = originalErrorsPath
+	})
 
 	scannedAt := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
 	result := discovery.Result{
@@ -257,28 +270,32 @@ func TestSaveScanResultAppendsScanAndWarningEvents(t *testing.T) {
 		t.Fatalf("saveScanResult() error = %v", err)
 	}
 
-	records := readJSONLRecords(t, path)
-	if len(records) != 2 {
-		t.Fatalf("got %d JSONL records, want scan and warning", len(records))
+	results := readJSONLRecords(t, resultsPath)
+	if len(results) != 1 {
+		t.Fatalf("got %d scan records, want one", len(results))
 	}
-	if records[0]["type"] != "scan_result" || records[0]["status"] != "completed_with_warnings" {
-		t.Errorf("scan record = %#v", records[0])
+	if results[0]["type"] != "scan_result" || results[0]["status"] != "completed_with_warnings" {
+		t.Errorf("scan record = %#v", results[0])
 	}
-	if records[0]["scanned_at"] != scannedAt.Format(time.RFC3339Nano) {
-		t.Errorf("scan timestamp = %#v, want %s", records[0]["scanned_at"], scannedAt.Format(time.RFC3339Nano))
+	if results[0]["scanned_at"] != scannedAt.Format(time.RFC3339Nano) {
+		t.Errorf("scan timestamp = %#v, want %s", results[0]["scanned_at"], scannedAt.Format(time.RFC3339Nano))
 	}
-	if records[1]["type"] != "warning" ||
-		records[1]["code"] != "NGINX_CONFIG_ACCESS_FAILED" ||
-		records[1]["message"] != "Could not access some web server configuration files." {
-		t.Errorf("warning event = %#v", records[1])
+	for _, field := range []string{"warnings", "error_events"} {
+		if _, ok := results[0][field]; ok {
+			t.Errorf("scan record unexpectedly contains %q: %#v", field, results[0])
+		}
 	}
-	if records[1]["details"] != "open /etc/nginx/example.conf: permission denied; token=[REDACTED]" {
-		t.Errorf("warning details = %#v, want redacted technical error", records[1]["details"])
+
+	events := readJSONLRecords(t, errorsPath)
+	if len(events) != 1 || events[0]["type"] != "warning" ||
+		events[0]["code"] != "NGINX_CONFIG_ACCESS_FAILED" ||
+		events[0]["message"] != "Could not access some web server configuration files." {
+		t.Fatalf("warning events = %#v", events)
 	}
-	if strings.Contains(records[0]["warnings"].([]any)[0].(string), "/etc/nginx") {
-		t.Error("scan record exposed raw warning details")
+	if events[0]["details"] != "open /etc/nginx/example.conf: permission denied; token=[REDACTED]" {
+		t.Errorf("warning details = %#v, want redacted technical error", events[0]["details"])
 	}
-	if strings.Contains(records[1]["details"].(string), "secret-value") {
+	if strings.Contains(events[0]["details"].(string), "secret-value") {
 		t.Error("warning details exposed a secret")
 	}
 }
@@ -306,10 +323,17 @@ func TestSaveScanResultAppendsMultipleSuccessfulScans(t *testing.T) {
 }
 
 func TestWriteErrorLogsStructuredErrorWithoutExposingDetails(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "scan-results.jsonl")
-	originalPath := scanResultsFile
-	scanResultsFile = path
-	t.Cleanup(func() { scanResultsFile = originalPath })
+	dir := t.TempDir()
+	resultsPath := filepath.Join(dir, "scan-results.jsonl")
+	errorsPath := filepath.Join(dir, "scan-errors.jsonl")
+	originalResultsPath := scanResultsFile
+	originalErrorsPath := scanErrorsFile
+	scanResultsFile = resultsPath
+	scanErrorsFile = errorsPath
+	t.Cleanup(func() {
+		scanResultsFile = originalResultsPath
+		scanErrorsFile = originalErrorsPath
+	})
 
 	const technical = "nginx: open /etc/nginx/sites-enabled/example.conf: permission denied"
 	var output bytes.Buffer
@@ -322,12 +346,15 @@ func TestWriteErrorLogsStructuredErrorWithoutExposingDetails(t *testing.T) {
 		t.Fatalf("terminal error exposed technical details: %s", output.String())
 	}
 
-	records := readJSONLRecords(t, path)
+	records := readJSONLRecords(t, errorsPath)
 	if len(records) != 1 || records[0]["type"] != "error" {
 		t.Fatalf("error records = %#v, want one error event", records)
 	}
 	if records[0]["details"] != technical {
 		t.Errorf("logged details = %#v, want %q", records[0]["details"], technical)
+	}
+	if _, err := os.Stat(resultsPath); !os.IsNotExist(err) {
+		t.Errorf("writeError() created or accessed scan results file: %v", err)
 	}
 }
 
@@ -345,10 +372,17 @@ func TestSaveFailedScanResultAppendsFailureRecord(t *testing.T) {
 }
 
 func TestFailedScanLogsOneErrorEvent(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "scan-results.jsonl")
-	originalPath := scanResultsFile
-	scanResultsFile = path
-	t.Cleanup(func() { scanResultsFile = originalPath })
+	dir := t.TempDir()
+	resultsPath := filepath.Join(dir, "scan-results.jsonl")
+	errorsPath := filepath.Join(dir, "scan-errors.jsonl")
+	originalResultsPath := scanResultsFile
+	originalErrorsPath := scanErrorsFile
+	scanResultsFile = resultsPath
+	scanErrorsFile = errorsPath
+	t.Cleanup(func() {
+		scanResultsFile = originalResultsPath
+		scanErrorsFile = originalErrorsPath
+	})
 
 	if err := saveFailedScanResult(time.Now()); err != nil {
 		t.Fatalf("saveFailedScanResult() error = %v", err)
@@ -358,23 +392,26 @@ func TestFailedScanLogsOneErrorEvent(t *testing.T) {
 		t.Fatalf("writeError() error = %v", err)
 	}
 
-	records := readJSONLRecords(t, path)
-	errorCount := 0
-	for _, record := range records {
-		if record["type"] == "error" {
-			errorCount++
-		}
+	results := readJSONLRecords(t, resultsPath)
+	events := readJSONLRecords(t, errorsPath)
+	if len(results) != 1 || results[0]["status"] != "failed" {
+		t.Fatalf("failed scan records = %#v; want one failed scan", results)
 	}
-	if len(records) != 2 || errorCount != 1 {
-		t.Fatalf("failed scan log records = %#v; want one failed scan and one error event", records)
+	if len(events) != 1 || events[0]["type"] != "error" {
+		t.Fatalf("error events = %#v; want one error event", events)
 	}
 }
 
 func TestWriteErrorJSONModeRemainsMachineReadable(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "scan-results.jsonl")
-	originalPath := scanResultsFile
-	scanResultsFile = path
-	t.Cleanup(func() { scanResultsFile = originalPath })
+	dir := t.TempDir()
+	originalResultsPath := scanResultsFile
+	originalErrorsPath := scanErrorsFile
+	scanResultsFile = filepath.Join(dir, "scan-results.jsonl")
+	scanErrorsFile = filepath.Join(dir, "scan-errors.jsonl")
+	t.Cleanup(func() {
+		scanResultsFile = originalResultsPath
+		scanErrorsFile = originalErrorsPath
+	})
 
 	var output bytes.Buffer
 	if err := writeError(&output, "command_failed", fmt.Errorf("lookup example.com: i/o timeout"), true); err != nil {
@@ -400,9 +437,14 @@ func TestWriteErrorSurfacesJSONLFailure(t *testing.T) {
 	if err := os.Mkdir(path, 0700); err != nil {
 		t.Fatal(err)
 	}
-	originalPath := scanResultsFile
-	scanResultsFile = path
-	t.Cleanup(func() { scanResultsFile = originalPath })
+	originalResultsPath := scanResultsFile
+	originalErrorsPath := scanErrorsFile
+	scanResultsFile = filepath.Join(t.TempDir(), "scan-results.jsonl")
+	scanErrorsFile = path
+	t.Cleanup(func() {
+		scanResultsFile = originalResultsPath
+		scanErrorsFile = originalErrorsPath
+	})
 
 	var output bytes.Buffer
 	err := writeError(&output, "command_failed", fmt.Errorf("unexpected failure"), false)
