@@ -14,7 +14,7 @@ func newVersionCommand() *cobra.Command {
 		Short: "Display DomainScout version",
 		Args:  cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
-			fmt.Printf("hostscope %s\n", version)
+			fmt.Fprintf(cmd.OutOrStdout(), "hostscope %s\n", version)
 		},
 	}
 }

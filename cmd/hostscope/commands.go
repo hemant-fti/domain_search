@@ -85,11 +85,15 @@ func writeCommandOutput(cmd *cobra.Command, path string, data []byte) error {
 		if err := os.WriteFile(path, data, 0600); err != nil {
 			return fmt.Errorf("write output file %s: %w", path, err)
 		}
+
+		captureCommandFileOutput(cmd.Context(), data)
 		return nil
 	}
+
 	if _, err := cmd.OutOrStdout().Write(data); err != nil {
 		return err
 	}
+
 	return nil
 }
 

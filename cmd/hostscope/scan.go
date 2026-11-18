@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -77,7 +78,8 @@ func writeScanOutput(cmd *cobra.Command, path string, result discovery.Result, u
 		if err != nil {
 			return fmt.Errorf("open output file %s: %w", path, err)
 		}
-		output = file
+		var captured bytes.Buffer
+		output = io.MultiWriter(file, &captured)
 		defer func() {
 			if err := file.Close(); err != nil {
 				returnErr = errors.Join(returnErr, fmt.Errorf("close output file: %w", err))
