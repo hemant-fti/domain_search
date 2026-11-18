@@ -187,3 +187,90 @@ func containsPort(ports []int, port int) bool {
 	}
 	return false
 }
+
+func newDomainsGetdatabyServerNameCommand() *cobra.Command {
+	var domainName string
+
+	cmd := newResultCommand(
+		"get-data-by-name",
+		"Retrieve domain data by name",
+		func(ctx context.Context, _ *cobra.Command) (commandResult, error) {
+			name := strings.TrimSpace(domainName)
+			if name == "" {
+				return commandResult{}, fmt.Errorf("domain name cannot be empty")
+			}
+
+			service := discovery.NewLocalService()
+			executor := ssh.NewLocalExecutor()
+
+			domains, err := service.DiscoverDomains(
+				ctx,
+				executor,
+				[]string{"nginx", "apache"},
+			)
+			if err != nil {
+				return commandResult{}, fmt.Errorf(
+					"discover domain data: %w",
+					err,
+				)
+			}
+
+			for _, domain := range domains {
+				matched := strings.EqualFold(domain.Name, name)
+
+				// Also match domain aliases.
+				if !matched {
+					for _, alias := range domain.Aliases {
+						if strings.EqualFold(strings.TrimSpace(alias), name) {
+							matched = true
+							break
+						}
+					}
+				}
+
+				if !matched {
+					continue
+				}
+
+				human := fmt.Sprintf(
+					"Domain: %s\n"+
+						"Server: %s\n"+
+						"Configuration: %s\n"+
+						"Document Root: %s\n"+
+						"Proxy Target: %s\n"+
+						"SSL Certificate: %s\n"+
+						"Aliases: %s\n"+
+						"Ports: %v",
+					domain.Name,
+					domain.Source,
+					domain.ConfigPath,
+					domain.DocumentRoot,
+					domain.ProxyTarget,
+					domain.SSLCertificate,
+					strings.Join(domain.Aliases, ", "),
+					domain.Ports,
+				)
+
+				return textResult(domain, human), nil
+			}
+
+			return commandResult{}, fmt.Errorf(
+				"domain %q was not found in Nginx or Apache configurations",
+				name,
+			)
+		},
+	)
+
+	cmd.Flags().StringVar(
+		&domainName,
+		"name",
+		"",
+		"Name of the domain to retrieve",
+	)
+
+	if err := cmd.MarkFlagRequired("name"); err != nil {
+		panic(err)
+	}
+
+	return cmd
+}

@@ -123,6 +123,7 @@ func newDomainsCommand() *cobra.Command {
 	cmd.AddCommand(newDomainsServerCommand("nginx"))
 	cmd.AddCommand(newDomainsServerCommand("apache"))
 	cmd.AddCommand(newDomainsDNSCommand())
+	cmd.AddCommand(newDomainsGetdatabyServerNameCommand())
 	return cmd
 }
 

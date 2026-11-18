@@ -103,6 +103,7 @@ hostscope domains dns --domain example.com --record AAAA
 hostscope domains dns --domain example.com --record MX
 hostscope domains dns --domain example.com --record NS
 hostscope domains dns --domain example.com --record TXT
+hostscope domains get-data-by-name --name example.com
 
 # Local sockets only; this does not scan remote hosts
 hostscope ports list --state listening --process
