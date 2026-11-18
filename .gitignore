@@ -1,7 +1,13 @@
 /bin/
+bin/
 /.env
 *.log
 .DS_Store
 .idea/
 .vscode/
 /dist/
+
+dom
+/hostscope
+/scan-errors.jsonl
+/scan-results.jsonl

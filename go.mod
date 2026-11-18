@@ -1,4 +1,4 @@
-module domain-scout
+module domain-search
 
 go 1.26.0
 

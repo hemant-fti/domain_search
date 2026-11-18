@@ -1,29 +1,22 @@
-.PHONY: run test build build-agent build-linux-amd64 build-linux-arm64 build-windows-amd64 fmt vet clean
-
-ifeq ($(OS),Windows_NT)
-MKDIR_DIST = if not exist dist mkdir dist
-else
-MKDIR_DIST = mkdir -p dist
-endif
+.PHONY: run test build build-agent build-app fmt vet clean
 
 run:
-	go run ./cmd/api
+	go run ./cmd/hostscope
 
 test:
 	go test ./...
 
 build:
-	go build -o bin/domain-scout-api.exe ./cmd/agent
+	go build -o bin/hostscope.exe ./cmd/hostscope
 
 build-agent:
-	go build -trimpath -ldflags="-s -w" -o dist/domain-scout.exe ./cmd/agent
+	go build -trimpath -ldflags="-s -w" -o dist/hostscope.exe ./cmd/hostscope
 
-build-linux-amd64: export CGO_ENABLED = 0
-build-linux-amd64: export GOOS = linux
-build-linux-amd64: export GOARCH = amd64
-build-linux-amd64:
-	$(MKDIR_DIST)
-	go build -buildvcs=false -trimpath -ldflags="-s -w" -o dist/domain-scout-linux-amd64 ./cmd/agent
+build-app: export CGO_ENABLED = 0
+build-app: export GOOS = linux
+build-app: export GOARCH = amd64
+build-app:
+	go build -buildvcs=false -trimpath -ldflags="-s -w" -o hostscope ./cmd/hostscope
 
 fmt:
 	gofmt -w .
