@@ -58,8 +58,6 @@ func Parse(config string) []inspectors.Domain {
 			domain.Ports = []int{80}
 		}
 
-		domain.SSL = hasSSL(block, domain.Ports)
-
 		if match := root.FindStringSubmatch(block); len(match) > 1 {
 			domain.DocumentRoot = strings.TrimSpace(match[1])
 		}

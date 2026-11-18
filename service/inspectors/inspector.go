@@ -8,13 +8,12 @@ import (
 type Domain struct {
 	Name           string   `json:"name"`
 	Source         string   `json:"source"`
-	ConfigPath     string   `json:"config_path,omitempty"`
-	DocumentRoot   string   `json:"document_root,omitempty"`
-	ProxyTarget    string   `json:"proxy_target,omitempty"`
-	SSL            bool     `json:"ssl"`
-	SSLCertificate string   `json:"ssl_certificate,omitempty"`
-	Aliases        []string `json:"aliases,omitempty"`
-	Ports          []int    `json:"ports,omitempty"`
+	ConfigPath     string   `json:"config_path"`
+	DocumentRoot   string   `json:"document_root"`
+	ProxyTarget    string   `json:"proxy_target"`
+	SSLCertificate string   `json:"ssl_certificate"`
+	Aliases        []string `json:"aliases"`
+	Ports          []int    `json:"ports"`
 }
 
 type Inspector interface {

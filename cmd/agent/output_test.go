@@ -71,7 +71,6 @@ func TestWriteHumanIncludesDiscoveryFields(t *testing.T) {
 				ConfigPath:     "/etc/nginx/sites-enabled/example",
 				DocumentRoot:   "/var/www/example",
 				ProxyTarget:    "http://127.0.0.1:8080",
-				SSL:            true,
 				SSLCertificate: "/etc/letsencrypt/live/example.com/fullchain.pem",
 				Aliases:        []string{"www.example.com"},
 				Ports:          []int{80, 443},

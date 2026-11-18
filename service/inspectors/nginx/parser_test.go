@@ -58,9 +58,6 @@ func TestParseCollectsSSLCertificatePathsAndSortedUniquePorts(t *testing.T) {
 		t.Errorf("SSL certificate = %q", domain.SSLCertificate)
 	}
 
-	if !domain.SSL {
-		t.Error("SSL = false, want true for a custom SSL port")
-	}
 	if !reflect.DeepEqual(domain.Ports, []int{80, 8443}) {
 		t.Errorf("ports = %#v, want [80 8443]", domain.Ports)
 	}

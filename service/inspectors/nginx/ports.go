@@ -51,23 +51,3 @@ func parsePorts(block string) []int {
 	sort.Ints(ports)
 	return ports
 }
-
-func hasSSL(block string, ports []int) bool {
-	for _, port := range ports {
-		if port == 443 {
-			return true
-		}
-	}
-
-	for _, match := range listen.FindAllStringSubmatch(block, -1) {
-		if len(match) > 1 {
-			for _, field := range strings.Fields(match[1]) {
-				if field == "ssl" {
-					return true
-				}
-			}
-		}
-	}
-
-	return false
-}

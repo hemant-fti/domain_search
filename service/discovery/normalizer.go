@@ -42,8 +42,6 @@ func Normalize(input []inspectors.Domain) []inspectors.Domain {
 				existing.SSLCertificate = domain.SSLCertificate
 			}
 
-			existing.SSL = existing.SSL || domain.SSL
-
 			existing.Aliases = appendUnique(
 				existing.Aliases,
 				domain.Aliases...,
