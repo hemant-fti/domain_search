@@ -51,7 +51,7 @@ func scanInspector(
 		return result, nil, warnings, err
 	}
 
-	// Discover configured domains.
+	// Discover configured virtual hosts.
 	domains, err := inspector.Discover(ctx, ex)
 
 	if err != nil {
@@ -74,16 +74,9 @@ func scanInspector(
 			Ports:        nonNilInts(domain.Ports),
 		})
 
+		// Keep one record per virtual host.
+		// Aliases remain attached to the primary domain.
 		found = append(found, domain)
-
-		// Include aliases as individual domains for DNS verification.
-		for _, alias := range domain.Aliases {
-			aliasDomain := domain
-			aliasDomain.Name = alias
-			aliasDomain.Aliases = nil
-
-			found = append(found, aliasDomain)
-		}
 	}
 
 	return result, found, warnings, nil
