@@ -3,9 +3,8 @@ package apache
 import (
 	"context"
 
-	ssh "domain-search/internal/executor"
 	"domain-search/internal/inspectors"
-	"domain-search/pkg/logger"
+	"domain-search/internal/logger"
 )
 
 type Inspector struct{}
@@ -18,12 +17,12 @@ func (i *Inspector) Name() string {
 	return "apache"
 }
 
-func (i *Inspector) Detect(ctx context.Context, ex ssh.Executor) (bool, error) {
-	return inspectors.DetectWebServer(ctx, ex, "apache")
+func (i *Inspector) Detect(ctx context.Context) (bool, error) {
+	return inspectors.DetectWebServer(ctx, "apache")
 }
 
-func (i *Inspector) Running(ctx context.Context, ex ssh.Executor) (bool, error) {
-	running, err := inspectors.IsWebServerRunning(ctx, ex, "apache")
+func (i *Inspector) Running(ctx context.Context) (bool, error) {
+	running, err := inspectors.IsWebServerRunning(ctx, "apache")
 	if err != nil {
 		logger.Error(err, "Failed to check Apache status")
 		return false, err
@@ -34,8 +33,8 @@ func (i *Inspector) Running(ctx context.Context, ex ssh.Executor) (bool, error) 
 	return running, nil
 }
 
-func (i *Inspector) Discover(ctx context.Context, ex ssh.Executor) ([]inspectors.Domain, error) {
-	domains, err := discoverApache(ctx, ex)
+func (i *Inspector) Discover(ctx context.Context) ([]inspectors.Domain, error) {
+	domains, err := discoverApache(ctx)
 	if err != nil {
 		logger.Error(err, "Failed to discover Apache domains")
 		return nil, err

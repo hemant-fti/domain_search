@@ -2,8 +2,6 @@ package server
 
 import (
 	"context"
-
-	osExec "domain-search/internal/executor"
 )
 
 type Service struct {
@@ -16,6 +14,6 @@ func NewService() *Service {
 	}
 }
 
-func (s *Service) GetInfo(ctx context.Context, ex osExec.Executor) (Info, error) {
-	return s.detector.Detect(ctx, ex)
+func (s *Service) GetInfo(ctx context.Context) (Info, error) {
+	return s.detector.Detect(ctx)
 }

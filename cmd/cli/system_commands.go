@@ -12,10 +12,9 @@ import (
 
 	cmdoutput "domain-search/cmd/output"
 	"domain-search/internal/discovery"
-	ssh "domain-search/internal/executor"
 	"domain-search/internal/inspectors/system"
+	"domain-search/internal/logger"
 	"domain-search/internal/server"
-	"domain-search/pkg/logger"
 )
 
 type systemCommandResult struct {
@@ -30,7 +29,7 @@ func NewSystemInfoCommand() *cobra.Command {
 		startedAt := time.Now()
 		logger.Info("System information inspection started")
 
-		info, warnings, err := discovery.NewLocalService().CollectSystem(ctx, ssh.NewLocalExecutor())
+		info, warnings, err := discovery.NewLocalService().CollectSystem(ctx)
 		if err != nil {
 			return commandResult{}, err
 		}

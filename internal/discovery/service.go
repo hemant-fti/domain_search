@@ -3,18 +3,18 @@ package discovery
 import (
 	"context"
 	"fmt"
+	"os/exec"
 	"runtime"
 	"strings"
 	"time"
 
 	"domain-search/internal/dns"
-	osExec "domain-search/internal/executor"
 	"domain-search/internal/inspectors"
 	"domain-search/internal/inspectors/apache"
 	"domain-search/internal/inspectors/nginx"
 	"domain-search/internal/inspectors/system"
+	"domain-search/internal/logger"
 	"domain-search/internal/server"
-	"domain-search/pkg/logger"
 )
 
 type Service struct {
@@ -51,7 +51,7 @@ func EnsureLinux(operation string) error {
 	return nil
 }
 
-func (s *Service) CollectSystem(ctx context.Context, _ osExec.Executor) (server.SystemInfo, []string, error) {
+func (s *Service) CollectSystem(ctx context.Context) (server.SystemInfo, []string, error) {
 	startedAt := time.Now()
 
 	logger.Debug("Collecting system information")
@@ -74,7 +74,7 @@ func (s *Service) CollectSystem(ctx context.Context, _ osExec.Executor) (server.
 	return info, warnings, nil
 }
 
-func (s *Service) Inspect(ctx context.Context, ex osExec.Executor, name string, options InspectOptions) (Inspection, error) {
+func (s *Service) Inspect(ctx context.Context, name string, options InspectOptions) (Inspection, error) {
 	startedAt := time.Now()
 
 	logger.Debug("Web server inspection started", "server", name)
@@ -102,7 +102,7 @@ func (s *Service) Inspect(ctx context.Context, ex osExec.Executor, name string, 
 		return result, fmt.Errorf("unsupported web server %q", name)
 	}
 
-	detected, err := inspector.Detect(ctx, ex)
+	detected, err := inspector.Detect(ctx)
 	if err != nil {
 		logger.Debug("Web server detection failed",
 			"server", name,
@@ -124,7 +124,7 @@ func (s *Service) Inspect(ctx context.Context, ex osExec.Executor, name string, 
 	logger.Debug("Web server detected", "server", name)
 
 	if status, ok := inspector.(statusInspector); ok {
-		running, err := status.Running(ctx, ex)
+		running, err := status.Running(ctx)
 		if err != nil {
 			logger.Debug("Web server status inspection failed",
 				"server", name,
@@ -141,7 +141,7 @@ func (s *Service) Inspect(ctx context.Context, ex osExec.Executor, name string, 
 			"server", name,
 		)
 
-		domains, err := inspector.Discover(ctx, ex)
+		domains, err := inspector.Discover(ctx)
 		if err != nil {
 			logger.Debug("Web server configuration discovery failed",
 				"server", name,
@@ -165,19 +165,22 @@ func (s *Service) Inspect(ctx context.Context, ex osExec.Executor, name string, 
 	}
 
 	if options.Version {
-		command := name + " -v 2>&1"
+		var commands []commandSpec
 
-		if name == "apache" {
-			command = "apachectl -v 2>&1"
+		switch name {
+		case "nginx":
+			commands = []commandSpec{
+				{name: "nginx", args: []string{"-v"}},
+			}
+
+		case "apache":
+			commands = []commandSpec{
+				{name: "apachectl", args: []string{"-v"}},
+				{name: "httpd", args: []string{"-v"}},
+			}
 		}
 
-		commands := []string{command}
-
-		if name == "apache" {
-			commands = append(commands, "httpd -v 2>&1")
-		}
-
-		output, err := runFirstCommand(ctx, ex, commands)
+		output, err := runFirstCommand(ctx, commands)
 		if err != nil {
 			return result, fmt.Errorf("read %s version: %w", name, err)
 		}
@@ -196,7 +199,7 @@ func (s *Service) Inspect(ctx context.Context, ex osExec.Executor, name string, 
 	return result, nil
 }
 
-func (s *Service) DiscoverDomains(ctx context.Context, ex osExec.Executor, names []string) ([]inspectors.Domain, error) {
+func (s *Service) DiscoverDomains(ctx context.Context, names []string) ([]inspectors.Domain, error) {
 	startedAt := time.Now()
 
 	logger.Debug("Domain discovery started", "servers", names)
@@ -204,7 +207,7 @@ func (s *Service) DiscoverDomains(ctx context.Context, ex osExec.Executor, names
 	var domains []inspectors.Domain
 
 	for _, name := range names {
-		result, err := s.Inspect(ctx, ex, name, InspectOptions{
+		result, err := s.Inspect(ctx, name, InspectOptions{
 			Domains: true,
 		})
 		if err != nil {
@@ -224,7 +227,7 @@ func (s *Service) DiscoverDomains(ctx context.Context, ex osExec.Executor, names
 	return domains, nil
 }
 
-func (s *Service) TestConfig(ctx context.Context, ex osExec.Executor, name string) (string, error) {
+func (s *Service) TestConfig(ctx context.Context, name string) (string, error) {
 	startedAt := time.Now()
 
 	logger.Debug("Web server configuration test started",
@@ -235,22 +238,31 @@ func (s *Service) TestConfig(ctx context.Context, ex osExec.Executor, name strin
 		return "", err
 	}
 
-	commands := []string{"nginx -t 2>&1"}
+	var commands []commandSpec
 
-	if name == "apache" {
-		commands = []string{
-			"apachectl configtest 2>&1",
-			"httpd -t 2>&1",
+	switch name {
+	case "nginx":
+		commands = []commandSpec{
+			{name: "nginx", args: []string{"-t"}},
 		}
+
+	case "apache":
+		commands = []commandSpec{
+			{name: "apachectl", args: []string{"configtest"}},
+			{name: "httpd", args: []string{"-t"}},
+		}
+
+	default:
+		return "", fmt.Errorf("unsupported web server: %s", name)
 	}
 
-	output, err := runFirstCommand(ctx, ex, commands)
+	output, err := runFirstCommand(ctx, commands)
 	if err != nil {
 		logger.Debug("Web server configuration test failed",
 			"server", name,
 			"error", err,
 		)
-		return "", fmt.Errorf("test %s configuration: %w", name, err)
+		return output, fmt.Errorf("test %s configuration: %w", name, err)
 	}
 
 	logger.Debug("Web server configuration test completed",
@@ -261,21 +273,41 @@ func (s *Service) TestConfig(ctx context.Context, ex osExec.Executor, name strin
 	return strings.TrimSpace(output), nil
 }
 
-func runFirstCommand(ctx context.Context, ex osExec.Executor, commands []string) (string, error) {
+type commandSpec struct {
+	name string
+	args []string
+}
+
+func runFirstCommand(ctx context.Context, commands []commandSpec) (string, error) {
 	var lastErr error
 
 	for _, command := range commands {
-		output, err := ex.Run(ctx, command)
+		if err := ctx.Err(); err != nil {
+			return "", err
+		}
+
+		cmd := exec.CommandContext(ctx, command.name, command.args...)
+
+		output, err := cmd.CombinedOutput()
 
 		if err == nil {
-			return output, nil
+			return string(output), nil
 		}
 
 		if ctx.Err() != nil {
-			return "", ctx.Err()
+			return string(output), ctx.Err()
 		}
 
-		lastErr = err
+		lastErr = fmt.Errorf(
+			"%s failed: %w; output: %s",
+			command.name,
+			err,
+			strings.TrimSpace(string(output)),
+		)
+	}
+
+	if lastErr == nil {
+		return "", fmt.Errorf("no commands provided")
 	}
 
 	return "", lastErr
@@ -283,7 +315,6 @@ func runFirstCommand(ctx context.Context, ex osExec.Executor, commands []string)
 
 func (s *Service) Discover(
 	ctx context.Context,
-	ex osExec.Executor,
 ) (Result, error) {
 	startedAt := time.Now()
 
@@ -291,7 +322,7 @@ func (s *Service) Discover(
 
 	result := newResult()
 
-	info, err := s.serverService.GetInfo(ctx, ex)
+	info, err := s.serverService.GetInfo(ctx)
 	if err != nil {
 		logger.Debug("Server information discovery failed", "error", err)
 		return result, err
@@ -328,7 +359,7 @@ func (s *Service) Discover(
 
 		logger.Debug("Detecting installed service", "service", name)
 
-		detected, detectErr := inspector.Detect(ctx, ex)
+		detected, detectErr := inspector.Detect(ctx)
 
 		if detectErr != nil {
 			if ctx.Err() != nil {
@@ -366,7 +397,6 @@ func (s *Service) Discover(
 		serverInfo, domains, warnings, err := scanInspector(
 			ctx,
 			inspector,
-			ex,
 		)
 
 		if err != nil {

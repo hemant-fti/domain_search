@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"text/tabwriter"
 	"time"
 
@@ -61,6 +62,10 @@ func MarshalJSON(result any, pretty bool) ([]byte, error) {
 }
 
 func appendJSONResult(path string, result []byte) (returnErr error) {
+	var scanFileMu sync.Mutex
+	scanFileMu.Lock()
+	defer scanFileMu.Unlock()
+
 	if err := history.EnsureLogDirectory(); err != nil {
 		return err
 	}

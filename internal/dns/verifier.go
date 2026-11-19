@@ -2,7 +2,7 @@ package dns
 
 import (
 	"context"
-	"domain-search/pkg/logger"
+	"domain-search/internal/logger"
 )
 
 type Verifier struct {
@@ -13,6 +13,12 @@ func NewVerifier() *Verifier {
 	return &Verifier{
 		resolver: NewResolver(),
 	}
+}
+
+type Result struct {
+	ResolvedIPs   []string `json:"resolved_ips"`
+	MatchesServer bool     `json:"matches_server"`
+	Status        string   `json:"status"`
 }
 
 func (v *Verifier) Verify(

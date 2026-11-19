@@ -14,7 +14,7 @@ import (
 
 	cmdoutput "domain-search/cmd/output"
 	"domain-search/internal/discovery"
-	ssh "domain-search/internal/executor"
+
 	"domain-search/internal/inspectors"
 )
 
@@ -103,16 +103,15 @@ func NewConfigServerCommand(name string) *cobra.Command {
 			VirtualHosts []inspectors.Domain `json:"virtual_hosts,omitempty"`
 		}{Server: name, ConfigPaths: []string{}}
 
-		ex := ssh.NewLocalExecutor()
 		if test {
-			output, err := discovery.NewLocalService().TestConfig(ctx, ex, name)
+			output, err := discovery.NewLocalService().TestConfig(ctx, name)
 			if err != nil {
 				return commandResult{}, err
 			}
 			result.TestOutput = output
 		}
 
-		inspection, err := discovery.NewLocalService().Inspect(ctx, ex, name, discovery.InspectOptions{
+		inspection, err := discovery.NewLocalService().Inspect(ctx, name, discovery.InspectOptions{
 			Domains: virtualHosts,
 			Config:  true,
 		})
@@ -146,7 +145,7 @@ func NewConfigServerCommand(name string) *cobra.Command {
 
 func configuredCertificates(ctx context.Context, domainFilter string) ([]localCertificate, error) {
 	service := discovery.NewLocalService()
-	domains, err := service.DiscoverDomains(ctx, ssh.NewLocalExecutor(), []string{"nginx", "apache"})
+	domains, err := service.DiscoverDomains(ctx, []string{"nginx", "apache"})
 	if err != nil {
 		return nil, err
 	}

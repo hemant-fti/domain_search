@@ -2,10 +2,9 @@ package server
 
 import (
 	"context"
-	"strconv"
+	"net"
+	"os"
 	"strings"
-
-	osExec "domain-search/internal/executor"
 )
 
 type Detector struct{}
@@ -14,47 +13,52 @@ func NewDetector() *Detector {
 	return &Detector{}
 }
 
-func (d *Detector) Detect(ctx context.Context, ex osExec.Executor) (Info, error) {
+func (d *Detector) Detect(ctx context.Context) (Info, error) {
 	var out Info
 
 	// Hostname
-	hostname, err := ex.Run(ctx, "hostname")
-	if err != nil {
-		if ctx.Err() != nil {
-			return out, ctx.Err()
-		}
-	} else {
-		out.Hostname = strings.TrimSpace(hostname)
+	if err := ctx.Err(); err != nil {
+		return out, err
+	}
+
+	hostname, err := os.Hostname()
+	if err == nil {
+		out.Hostname = hostname
 	}
 
 	// Operating system information
-	osRelease, err := ex.Run(ctx, "cat /etc/os-release")
-	if err != nil {
-		if ctx.Err() != nil {
-			return out, ctx.Err()
-		}
-	} else {
-		out.OperatingSystem = parsePrettyName(osRelease)
+	if err := ctx.Err(); err != nil {
+		return out, err
+	}
+
+	osRelease, err := os.ReadFile("/etc/os-release")
+	if err == nil {
+		out.OperatingSystem = parsePrettyName(string(osRelease))
 	}
 
 	// Kernel version
-	kernel, err := ex.Run(ctx, "uname -r")
-	if err != nil {
-		if ctx.Err() != nil {
-			return out, ctx.Err()
-		}
-	} else {
-		out.Kernel = strings.TrimSpace(kernel)
+	if err := ctx.Err(); err != nil {
+		return out, err
+	}
+
+	kernel, err := os.ReadFile("/proc/sys/kernel/osrelease")
+	if err == nil {
+		out.Kernel = strings.TrimSpace(string(kernel))
 	}
 
 	// Primary IP address
-	route, err := ex.Run(ctx, "ip -o route get 1.1.1.1")
-	if err != nil {
-		if ctx.Err() != nil {
-			return out, ctx.Err()
+	if err := ctx.Err(); err != nil {
+		return out, err
+	}
+
+	dialer := net.Dialer{}
+	conn, err := dialer.DialContext(ctx, "udp", "1.1.1.1:80")
+	if err == nil {
+		defer conn.Close()
+
+		if addr, ok := conn.LocalAddr().(*net.UDPAddr); ok {
+			out.PrimaryIP = addr.IP.String()
 		}
-	} else {
-		out.PrimaryIP = parsePrimaryIP(route)
 	}
 
 	return out, nil
@@ -70,24 +74,7 @@ func parsePrettyName(data string) string {
 
 		value = strings.TrimSpace(value)
 
-		// Remove surrounding quotes and unescape quoted values.
-		if unquoted, err := strconv.Unquote(value); err == nil {
-			return unquoted
-		}
-
 		return strings.Trim(value, `"'`)
-	}
-
-	return ""
-}
-
-func parsePrimaryIP(output string) string {
-	fields := strings.Fields(output)
-
-	for i := 0; i < len(fields)-1; i++ {
-		if fields[i] == "src" {
-			return fields[i+1]
-		}
 	}
 
 	return ""

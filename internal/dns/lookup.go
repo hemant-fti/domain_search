@@ -2,7 +2,7 @@ package dns
 
 import (
 	"context"
-	"domain-search/pkg/logger"
+	"domain-search/internal/logger"
 	"net/netip"
 	"slices"
 	"time"

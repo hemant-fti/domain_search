@@ -3,9 +3,8 @@ package nginx
 import (
 	"context"
 
-	ssh "domain-search/internal/executor"
 	"domain-search/internal/inspectors"
-	"domain-search/pkg/logger"
+	"domain-search/internal/logger"
 )
 
 type Inspector struct{}
@@ -18,8 +17,8 @@ func (i *Inspector) Name() string {
 	return "nginx"
 }
 
-func (i *Inspector) Detect(ctx context.Context, ex ssh.Executor) (bool, error) {
-	detected, err := inspectors.DetectWebServer(ctx, ex, "nginx")
+func (i *Inspector) Detect(ctx context.Context) (bool, error) {
+	detected, err := inspectors.DetectWebServer(ctx, "nginx")
 	if err != nil {
 		logger.Error(err, "Failed to detect nginx")
 		return false, err
@@ -30,8 +29,8 @@ func (i *Inspector) Detect(ctx context.Context, ex ssh.Executor) (bool, error) {
 	return detected, nil
 }
 
-func (i *Inspector) Running(ctx context.Context, ex ssh.Executor) (bool, error) {
-	running, err := inspectors.IsWebServerRunning(ctx, ex, "nginx")
+func (i *Inspector) Running(ctx context.Context) (bool, error) {
+	running, err := inspectors.IsWebServerRunning(ctx, "nginx")
 	if err != nil {
 		logger.Error(err, "Failed to check nginx status")
 		return false, err
@@ -42,7 +41,7 @@ func (i *Inspector) Running(ctx context.Context, ex ssh.Executor) (bool, error) 
 	return running, nil
 }
 
-func (i *Inspector) Discover(ctx context.Context, _ ssh.Executor) ([]inspectors.Domain, error) {
+func (i *Inspector) Discover(ctx context.Context) ([]inspectors.Domain, error) {
 	domains, err := discoverNginx(ctx)
 	if err != nil {
 		logger.Error(err, "Failed to discover nginx domains")

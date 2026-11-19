@@ -11,8 +11,9 @@ import (
 	"github.com/spf13/cobra"
 
 	"domain-search/internal/discovery"
-	ssh "domain-search/internal/executor"
 	ports "domain-search/internal/inspectors"
+
+	"github.com/coreos/go-systemd/v22/dbus"
 )
 
 func NewPortsListCommand(fixedProtocol string) *cobra.Command {
@@ -117,56 +118,76 @@ type serviceRecord struct {
 
 var serviceNamePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.@:-]*$`)
 
-func listServices(ctx context.Context, ex ssh.Executor) ([]serviceRecord, error) {
+func listServices(ctx context.Context) ([]serviceRecord, error) {
 	if err := discovery.EnsureLinux("system service inspection"); err != nil {
 		return nil, err
 	}
-	if _, err := ex.Run(ctx, "systemctl --version"); err != nil {
-		return nil, fmt.Errorf("systemd is unavailable: %w", err)
+
+	conn, err := dbus.NewSystemConnectionContext(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("connect to systemd: %w", err)
 	}
-	units, err := ex.Run(ctx, "systemctl list-unit-files --type=service --no-pager --no-legend")
+	defer conn.Close()
+
+	unitFiles, err := conn.ListUnitFilesContext(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("list system service files: %w", err)
 	}
-	activeUnits, err := ex.Run(ctx, "systemctl list-units --type=service --all --no-pager --plain --no-legend")
+
+	activeUnits, err := conn.ListUnitsContext(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("list system services: %w", err)
 	}
 
 	results := make(map[string]*serviceRecord)
-	for _, line := range strings.Split(units, "\n") {
-		fields := strings.Fields(line)
-		if len(fields) < 2 || !strings.HasSuffix(fields[0], ".service") {
+
+	for _, unit := range unitFiles {
+		if !strings.HasSuffix(unit.Path, ".service") {
 			continue
 		}
-		results[fields[0]] = &serviceRecord{Name: fields[0], Enabled: fields[1], Active: "inactive"}
+
+		results[unit.Path] = &serviceRecord{
+			Name:    unit.Path,
+			Active:  "inactive",
+			Enabled: unit.Type,
+		}
 	}
-	for _, line := range strings.Split(activeUnits, "\n") {
-		fields := strings.Fields(line)
-		if len(fields) < 4 || !strings.HasSuffix(fields[0], ".service") {
+
+	for _, unit := range activeUnits {
+		if !strings.HasSuffix(unit.Name, ".service") {
 			continue
 		}
-		record, ok := results[fields[0]]
+
+		record, ok := results[unit.Name]
 		if !ok {
-			record = &serviceRecord{Name: fields[0], Enabled: "unknown"}
-			results[fields[0]] = record
+			record = &serviceRecord{
+				Name:    unit.Name,
+				Enabled: "unknown",
+			}
+			results[unit.Name] = record
 		}
-		record.Active = fields[2]
-		record.Sub = fields[3]
+
+		record.Active = unit.ActiveState
+		record.Sub = unit.SubState
 	}
 
 	list := make([]serviceRecord, 0, len(results))
+
 	for _, record := range results {
 		list = append(list, *record)
 	}
-	sort.Slice(list, func(i, j int) bool { return list[i].Name < list[j].Name })
+
+	sort.Slice(list, func(i, j int) bool {
+		return list[i].Name < list[j].Name
+	})
+
 	return list, nil
 }
 
 func NewServicesListCommand() *cobra.Command {
 	var running, stopped, enabled bool
 	cmd := newResultCommand("list", "List system services and their status", func(ctx context.Context, _ *cobra.Command) (commandResult, error) {
-		services, err := listServices(ctx, ssh.NewLocalExecutor())
+		services, err := listServices(ctx)
 		if err != nil {
 			return commandResult{}, err
 		}
@@ -204,67 +225,81 @@ func NewServicesListCommand() *cobra.Command {
 
 func NewServiceStatusCommand() *cobra.Command {
 	var serviceName string
-	cmd := newResultCommand("status <service>", "Show active and enabled state for a service", func(ctx context.Context, _ *cobra.Command) (commandResult, error) {
-		if err := discovery.EnsureLinux("system service inspection"); err != nil {
-			return commandResult{}, err
-		}
-		name := serviceName
-		if !serviceNamePattern.MatchString(name) {
-			return commandResult{}, fmt.Errorf("invalid service name %q", name)
-		}
-		if !strings.HasSuffix(name, ".service") {
-			name += ".service"
-		}
-		ex := ssh.NewLocalExecutor()
-		if _, err := ex.Run(ctx, "systemctl --version"); err != nil {
-			return commandResult{}, fmt.Errorf("systemd is unavailable: %w", err)
-		}
-		active, err := serviceState(ctx, ex, "is-active", name)
-		if err != nil {
-			return commandResult{}, err
-		}
-		enabled, err := serviceState(ctx, ex, "is-enabled", name)
-		if err != nil {
-			return commandResult{}, err
-		}
-		if ctx.Err() != nil {
-			return commandResult{}, ctx.Err()
-		}
-		result := serviceRecord{Name: name, Active: active, Enabled: enabled}
-		return textResult(result, fmt.Sprintf("%s: %s (%s)", name, active, enabled)), nil
-	})
+
+	cmd := newResultCommand(
+		"status <service>",
+		"Show active and enabled state for a service",
+		func(ctx context.Context, _ *cobra.Command) (commandResult, error) {
+			if err := discovery.EnsureLinux("system service inspection"); err != nil {
+				return commandResult{}, err
+			}
+
+			name := serviceName
+
+			if !serviceNamePattern.MatchString(name) {
+				return commandResult{}, fmt.Errorf("invalid service name %q", name)
+			}
+
+			if !strings.HasSuffix(name, ".service") {
+				name += ".service"
+			}
+
+			if err := ctx.Err(); err != nil {
+				return commandResult{}, err
+			}
+
+			conn, err := dbus.NewSystemConnectionContext(ctx)
+			if err != nil {
+				return commandResult{}, fmt.Errorf("connect to systemd: %w", err)
+			}
+			defer conn.Close()
+
+			units, err := conn.ListUnitsByNamesContext(ctx, []string{name})
+			if err != nil {
+				return commandResult{}, fmt.Errorf("read active service state: %w", err)
+			}
+
+			active := "inactive"
+			if len(units) > 0 {
+				active = units[0].ActiveState
+			}
+
+			unitFiles, err := conn.ListUnitFilesContext(ctx)
+			if err != nil {
+				return commandResult{}, fmt.Errorf("read enabled service state: %w", err)
+			}
+
+			enabled := "not-found"
+			for _, unit := range unitFiles {
+				if unit.Path == name {
+					enabled = unit.Type
+					break
+				}
+			}
+
+			if err := ctx.Err(); err != nil {
+				return commandResult{}, err
+			}
+
+			result := serviceRecord{
+				Name:    name,
+				Active:  active,
+				Enabled: enabled,
+			}
+
+			return textResult(
+				result,
+				fmt.Sprintf("%s: %s (%s)", name, active, enabled),
+			), nil
+		},
+	)
+
 	cmd.Args = cobra.ExactArgs(1)
+
 	cmd.PreRunE = func(_ *cobra.Command, args []string) error {
 		serviceName = args[0]
 		return nil
 	}
-	return cmd
-}
 
-func serviceState(ctx context.Context, ex ssh.Executor, operation, service string) (string, error) {
-	output, err := ex.Run(ctx, "systemctl "+operation+" "+service)
-	if ctx.Err() != nil {
-		return "", ctx.Err()
-	}
-	value := strings.TrimSpace(output)
-	if value == "" {
-		if err != nil {
-			return "", fmt.Errorf("read %s service state: %w", operation, err)
-		}
-		return "", fmt.Errorf("read %s service state: systemctl returned no status", operation)
-	}
-	if err != nil {
-		known := map[string]bool{
-			"active": true, "inactive": true, "failed": true, "activating": true,
-			"deactivating": true, "reloading": true, "unknown": true,
-			"enabled": true, "enabled-runtime": true, "disabled": true,
-			"static": true, "indirect": true, "generated": true, "transient": true,
-			"masked": true, "masked-runtime": true, "linked": true,
-			"linked-runtime": true, "alias": true, "not-found": true,
-		}
-		if !known[value] {
-			return "", fmt.Errorf("read %s service state: %w", operation, err)
-		}
-	}
-	return value, nil
+	return cmd
 }

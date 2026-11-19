@@ -2,7 +2,6 @@ package inspectors
 
 import (
 	"context"
-	ssh "domain-search/internal/executor"
 )
 
 type Domain struct {
@@ -18,6 +17,6 @@ type Domain struct {
 
 type Inspector interface {
 	Name() string
-	Detect(context.Context, ssh.Executor) (bool, error)
-	Discover(context.Context, ssh.Executor) ([]Domain, error)
+	Detect(context.Context) (bool, error)
+	Discover(context.Context) ([]Domain, error)
 }

@@ -6,7 +6,7 @@ import (
 	"domain-search/cmd/apperr"
 	"domain-search/cmd/cli/rootcli"
 	"domain-search/cmd/history"
-	"domain-search/pkg/logger"
+	"domain-search/internal/logger"
 	"io"
 	"os"
 	"time"

@@ -3,7 +3,6 @@ package discovery
 import (
 	"context"
 
-	osExec "domain-search/internal/executor"
 	"domain-search/internal/inspectors"
 )
 
@@ -11,14 +10,12 @@ import (
 type statusInspector interface {
 	Running(
 		context.Context,
-		osExec.Executor,
 	) (bool, error)
 }
 
 func scanInspector(
 	ctx context.Context,
 	inspector inspectors.Inspector,
-	ex osExec.Executor,
 ) (ServerInfo, []inspectors.Domain, []string, error) {
 
 	result := ServerInfo{
@@ -31,7 +28,7 @@ func scanInspector(
 
 	// Check service status.
 	if status, ok := inspector.(statusInspector); ok {
-		running, err := status.Running(ctx, ex)
+		running, err := status.Running(ctx)
 
 		if err != nil {
 			if ctx.Err() != nil {
@@ -52,7 +49,7 @@ func scanInspector(
 	}
 
 	// Discover configured virtual hosts.
-	domains, err := inspector.Discover(ctx, ex)
+	domains, err := inspector.Discover(ctx)
 
 	if err != nil {
 		if ctx.Err() != nil {

@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"domain-search/pkg/logger"
+	"domain-search/internal/logger"
 
 	"github.com/spf13/cobra"
 )

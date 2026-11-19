@@ -2,7 +2,7 @@ package main
 
 import (
 	"domain-search/cmd/app"
-	"domain-search/pkg/logger"
+	"domain-search/internal/logger"
 	"os"
 )
 

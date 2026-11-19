@@ -5,7 +5,7 @@ import (
 	"os"
 
 	outpt "domain-search/cmd/output"
-	"domain-search/pkg/logger"
+	"domain-search/internal/logger"
 )
 
 func HandleCommandError(err error) error {

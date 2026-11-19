@@ -2,41 +2,36 @@ package inspectors
 
 import (
 	"context"
-	ssh "domain-search/internal/executor"
 	"fmt"
+	"os/exec"
 	"strings"
 )
 
-func DetectWebServer(ctx context.Context, ex ssh.Executor, service string) (bool, error) {
+func DetectWebServer(ctx context.Context, service string) (bool, error) {
 	if err := ctx.Err(); err != nil {
 		return false, err
 	}
 
-	var commands []string
+	var binaries []string
 
 	switch strings.ToLower(service) {
 	case "apache":
-		commands = []string{
-			"command -v apachectl",
-			"command -v httpd",
-		}
+		binaries = []string{"apachectl", "httpd"}
 
 	case "nginx":
-		commands = []string{
-			"command -v nginx",
-		}
+		binaries = []string{"nginx"}
 
 	default:
 		return false, fmt.Errorf("unsupported web server: %s", service)
 	}
 
-	for _, cmd := range commands {
-		if _, err := ex.Run(ctx, cmd); err == nil {
-			return true, nil
-		}
-
+	for _, binary := range binaries {
 		if err := ctx.Err(); err != nil {
 			return false, err
+		}
+
+		if _, err := exec.LookPath(binary); err == nil {
+			return true, nil
 		}
 	}
 

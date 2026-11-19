@@ -6,7 +6,6 @@ import (
 	"runtime"
 	"testing"
 
-	osExec "domain-search/internal/executor"
 	"domain-search/internal/inspectors"
 )
 
@@ -40,15 +39,15 @@ func (i *testInspector) Name() string {
 	return i.name
 }
 
-func (i *testInspector) Detect(context.Context, osExec.Executor) (bool, error) {
+func (i *testInspector) Detect(context.Context) (bool, error) {
 	return i.detected, i.detectErr
 }
 
-func (i *testInspector) Running(context.Context, osExec.Executor) (bool, error) {
+func (i *testInspector) Running(context.Context) (bool, error) {
 	return i.running, i.runningErr
 }
 
-func (i *testInspector) Discover(context.Context, osExec.Executor) ([]inspectors.Domain, error) {
+func (i *testInspector) Discover(context.Context) ([]inspectors.Domain, error) {
 	return i.domains, i.discoverErr
 }
 
@@ -66,12 +65,8 @@ func TestInspectUsesSharedInspectorLogic(t *testing.T) {
 			},
 		},
 	})
-	executor := &inspectionExecutor{
-		commands: map[string]string{},
-		errors:   map[string]error{},
-	}
 
-	result, err := service.Inspect(context.Background(), executor, "nginx", InspectOptions{
+	result, err := service.Inspect(context.Background(), "nginx", InspectOptions{
 		Domains: true,
 		Config:  true,
 	})
@@ -91,12 +86,11 @@ func TestInspectRejectsUnsupportedServer(t *testing.T) {
 		t.Skip("Linux web-server inspection is not available on this platform")
 	}
 	service := NewService(nil)
-	executor := &inspectionExecutor{
-		commands: map[string]string{},
-		errors:   map[string]error{},
-	}
 
-	_, err := service.Inspect(context.Background(), executor, "caddy", InspectOptions{})
+	_, err := service.Inspect(context.Background(), "caddy", InspectOptions{
+		Domains: true,
+		Config:  true,
+	})
 	if err == nil {
 		t.Fatal("Inspect() error = nil, want unsupported server error")
 	}

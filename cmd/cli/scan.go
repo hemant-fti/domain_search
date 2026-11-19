@@ -13,8 +13,7 @@ import (
 
 	cmdoutput "domain-search/cmd/output"
 	"domain-search/internal/discovery"
-	ssh "domain-search/internal/executor"
-	"domain-search/pkg/logger"
+	"domain-search/internal/logger"
 
 	"github.com/spf13/cobra"
 )
@@ -69,7 +68,7 @@ func RunDiscovery(cmd *cobra.Command, ctx context.Context, outputPath string, us
 	service := discovery.NewLocalService()
 	startedAt := time.Now()
 
-	result, err := service.Discover(ctx, ssh.NewLocalExecutor())
+	result, err := service.Discover(ctx)
 	if err != nil {
 		if recordErr := cmdoutput.SaveFailedScanResult(result.ScannedAt); recordErr != nil {
 			return fmt.Errorf(

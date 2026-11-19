@@ -9,9 +9,8 @@ import (
 	cmdoutput "domain-search/cmd/output"
 	"domain-search/internal/discovery"
 	"domain-search/internal/dns"
-	ssh "domain-search/internal/executor"
 	"domain-search/internal/inspectors"
-	"domain-search/pkg/logger"
+	"domain-search/internal/logger"
 
 	"github.com/spf13/cobra"
 )
@@ -44,12 +43,11 @@ func NewWebInspectionCommand(use, short, name string) *cobra.Command {
 		results := make([]discovery.Inspection, 0, len(names))
 
 		service := discovery.NewLocalService()
-		executor := ssh.NewLocalExecutor()
 
 		for _, serverName := range names {
 			logger.Debug("Inspecting web server", "server", serverName)
 
-			result, err := service.Inspect(ctx, executor, serverName, discovery.InspectOptions{
+			result, err := service.Inspect(ctx, serverName, discovery.InspectOptions{
 				Domains: domains,
 				Config:  config,
 				Version: versionFlag,
@@ -138,12 +136,11 @@ func NewDomainsCommandForServer(use, serverName string) *cobra.Command {
 		domains := make([]inspectors.Domain, 0)
 
 		service := discovery.NewLocalService()
-		executor := ssh.NewLocalExecutor()
 
 		for _, name := range names {
 			logger.Debug("Discovering virtual hosts", "server", name)
 
-			result, err := service.Inspect(ctx, executor, name, discovery.InspectOptions{
+			result, err := service.Inspect(ctx, name, discovery.InspectOptions{
 				Domains: true,
 			})
 			if err != nil {
@@ -297,11 +294,9 @@ func NewDomainsGetdatabyServerNameCommand() *cobra.Command {
 			logger.Info("Domain lookup started", "domain", name)
 
 			service := discovery.NewLocalService()
-			executor := ssh.NewLocalExecutor()
 
 			domains, err := service.DiscoverDomains(
 				ctx,
-				executor,
 				[]string{"nginx", "apache"},
 			)
 			if err != nil {
