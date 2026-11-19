@@ -1,8 +1,11 @@
-package main
+package app
 
 import (
 	"bytes"
 	"context"
+	"domain-search/cmd/apperr"
+	"domain-search/cmd/cli/rootcli"
+	"domain-search/cmd/history"
 	"io"
 	"os"
 	"time"
@@ -15,11 +18,11 @@ func executeApplication(ctx context.Context) error {
 
 	ctx = context.WithValue(
 		ctx,
-		commandOutputCaptureKey{},
+		history.CommandOutputCaptureKey{},
 		&fileOutput,
 	)
 
-	command := newRootCommand()
+	command := rootcli.NewRootCommand()
 	command.SetContext(ctx)
 	command.SetOut(io.MultiWriter(os.Stdout, &stdout))
 	command.SetErr(io.MultiWriter(os.Stderr, &stderr))
@@ -32,7 +35,7 @@ func executeApplication(ctx context.Context) error {
 		executedCommand = command
 	}
 
-	recordCommandExecution(
+	history.RecordCommandExecution(
 		executedCommand,
 		os.Args[1:],
 		startedAt,
@@ -42,7 +45,7 @@ func executeApplication(ctx context.Context) error {
 	)
 
 	if err != nil {
-		return handleCommandError(err)
+		return apperr.HandleCommandError(err)
 	}
 
 	return nil

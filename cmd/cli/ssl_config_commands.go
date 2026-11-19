@@ -1,4 +1,4 @@
-package main
+package cli
 
 import (
 	"context"
@@ -12,9 +12,10 @@ import (
 
 	"github.com/spf13/cobra"
 
+	cmdoutput "domain-search/cmd/output"
 	"domain-search/internal/discovery"
+	ssh "domain-search/internal/executor"
 	"domain-search/internal/inspectors"
-	ssh "domain-search/internal/os"
 )
 
 type localCertificate struct {
@@ -29,63 +30,7 @@ type localCertificate struct {
 	Expired   bool      `json:"expired"`
 }
 
-func configuredCertificates(ctx context.Context, domainFilter string) ([]localCertificate, error) {
-	service := discovery.NewLocalService()
-	domains, err := service.DiscoverDomains(ctx, ssh.NewLocalExecutor(), []string{"nginx", "apache"})
-	if err != nil {
-		return nil, err
-	}
-
-	var certificates []localCertificate
-	seen := make(map[string]bool)
-	for _, domain := range domains {
-		if domainFilter != "" && !strings.EqualFold(domain.Name, domainFilter) && !hasStringFold(domain.Aliases, domainFilter) {
-			continue
-		}
-		path := strings.TrimSpace(domain.SSLCertificate)
-		if path == "" || seen[path] {
-			continue
-		}
-		seen[path] = true
-		data, err := os.ReadFile(path)
-		if err != nil {
-			return nil, fmt.Errorf("read configured certificate %s: %w", path, err)
-		}
-		found := false
-		for len(data) > 0 {
-			block, rest := pem.Decode(data)
-			if block == nil {
-				break
-			}
-			data = rest
-			if block.Type != "CERTIFICATE" {
-				continue
-			}
-			certificate, err := x509.ParseCertificate(block.Bytes)
-			if err != nil {
-				return nil, fmt.Errorf("parse configured certificate %s: %w", path, err)
-			}
-			found = true
-			certificates = append(certificates, localCertificate{
-				Domain:    domain.Name,
-				Server:    domain.Source,
-				Path:      path,
-				Subject:   certificate.Subject.String(),
-				Issuer:    certificate.Issuer.String(),
-				NotBefore: certificate.NotBefore,
-				NotAfter:  certificate.NotAfter,
-				DaysLeft:  int(time.Until(certificate.NotAfter).Hours() / 24),
-				Expired:   time.Now().After(certificate.NotAfter),
-			})
-		}
-		if !found {
-			return nil, fmt.Errorf("configured certificate %s contains no PEM certificate", path)
-		}
-	}
-	return certificates, nil
-}
-
-func newCertificateCommand(use string) *cobra.Command {
+func NewCertificateCommand(use string) *cobra.Command {
 	var domain string
 	var expired bool
 	var expiringInText string
@@ -148,7 +93,7 @@ func newCertificateCommand(use string) *cobra.Command {
 	return cmd
 }
 
-func newConfigServerCommand(name string) *cobra.Command {
+func NewConfigServerCommand(name string) *cobra.Command {
 	var test, virtualHosts bool
 	cmd := newResultCommand(name, "Inspect "+name+" configuration without printing its contents", func(ctx context.Context, _ *cobra.Command) (commandResult, error) {
 		result := struct {
@@ -180,7 +125,7 @@ func newConfigServerCommand(name string) *cobra.Command {
 		}
 		lines := []string{"Server: " + name}
 		if test {
-			lines = append(lines, "Configuration test: "+displayValue(result.TestOutput))
+			lines = append(lines, "Configuration test: "+cmdoutput.DisplayValue(result.TestOutput))
 		}
 		if len(result.ConfigPaths) == 0 {
 			lines = append(lines, "Configuration paths: none discovered")
@@ -197,6 +142,62 @@ func newConfigServerCommand(name string) *cobra.Command {
 	cmd.Flags().BoolVar(&test, "test", false, "run the server's native configuration test")
 	cmd.Flags().BoolVar(&virtualHosts, "virtual-hosts", false, "include parsed virtual host metadata")
 	return cmd
+}
+
+func configuredCertificates(ctx context.Context, domainFilter string) ([]localCertificate, error) {
+	service := discovery.NewLocalService()
+	domains, err := service.DiscoverDomains(ctx, ssh.NewLocalExecutor(), []string{"nginx", "apache"})
+	if err != nil {
+		return nil, err
+	}
+
+	var certificates []localCertificate
+	seen := make(map[string]bool)
+	for _, domain := range domains {
+		if domainFilter != "" && !strings.EqualFold(domain.Name, domainFilter) && !hasStringFold(domain.Aliases, domainFilter) {
+			continue
+		}
+		path := strings.TrimSpace(domain.SSLCertificate)
+		if path == "" || seen[path] {
+			continue
+		}
+		seen[path] = true
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return nil, fmt.Errorf("read configured certificate %s: %w", path, err)
+		}
+		found := false
+		for len(data) > 0 {
+			block, rest := pem.Decode(data)
+			if block == nil {
+				break
+			}
+			data = rest
+			if block.Type != "CERTIFICATE" {
+				continue
+			}
+			certificate, err := x509.ParseCertificate(block.Bytes)
+			if err != nil {
+				return nil, fmt.Errorf("parse configured certificate %s: %w", path, err)
+			}
+			found = true
+			certificates = append(certificates, localCertificate{
+				Domain:    domain.Name,
+				Server:    domain.Source,
+				Path:      path,
+				Subject:   certificate.Subject.String(),
+				Issuer:    certificate.Issuer.String(),
+				NotBefore: certificate.NotBefore,
+				NotAfter:  certificate.NotAfter,
+				DaysLeft:  int(time.Until(certificate.NotAfter).Hours() / 24),
+				Expired:   time.Now().After(certificate.NotAfter),
+			})
+		}
+		if !found {
+			return nil, fmt.Errorf("configured certificate %s contains no PEM certificate", path)
+		}
+	}
+	return certificates, nil
 }
 
 func parseCertificateDuration(value string) (time.Duration, error) {

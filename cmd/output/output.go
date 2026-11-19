@@ -1,4 +1,4 @@
-package main
+package output
 
 import (
 	"bytes"
@@ -13,6 +13,7 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"domain-search/cmd/history"
 	"domain-search/internal/discovery"
 )
 
@@ -22,12 +23,12 @@ const (
 )
 
 var (
-	scanResultsFile = filepath.Join(logDirectory, "scan-results.jsonl")
-	scanErrorsFile  = filepath.Join(logDirectory, "scan-errors.jsonl")
+	ScanResultsFile = filepath.Join(history.LogDirectory, "scan-results.jsonl")
+	ScanErrorsFile  = filepath.Join(history.LogDirectory, "scan-errors.jsonl")
 )
 
-func writeJSONTo(output io.Writer, result any, pretty bool) error {
-	data, err := marshalJSON(result, pretty)
+func WriteJSONTo(output io.Writer, result any, pretty bool) error {
+	data, err := MarshalJSON(result, pretty)
 	if err != nil {
 		return fmt.Errorf("encode JSON: %w", err)
 	}
@@ -43,7 +44,7 @@ func writeJSONTo(output io.Writer, result any, pretty bool) error {
 	return nil
 }
 
-func marshalJSON(result any, pretty bool) ([]byte, error) {
+func MarshalJSON(result any, pretty bool) ([]byte, error) {
 	var output bytes.Buffer
 	encoder := json.NewEncoder(&output)
 	encoder.SetEscapeHTML(false)
@@ -60,7 +61,7 @@ func marshalJSON(result any, pretty bool) ([]byte, error) {
 }
 
 func appendJSONResult(path string, result []byte) (returnErr error) {
-	if err := ensureLogDirectory(); err != nil {
+	if err := history.EnsureLogDirectory(); err != nil {
 		return err
 	}
 	result = bytes.TrimSpace(result)
@@ -108,7 +109,7 @@ func appendJSONResult(path string, result []byte) (returnErr error) {
 	return nil
 }
 
-func writeHuman(output io.Writer, result discovery.Result) error {
+func WriteHuman(output io.Writer, result discovery.Result) error {
 	if err := saveScanResult(result); err != nil {
 		return err
 	}
@@ -218,10 +219,10 @@ func writeServerInfo(w io.Writer, result discovery.Result) {
 
 	tw := newTableWriter(w)
 
-	writeRow(tw, "Hostname", displayValue(result.Server.Hostname))
-	writeRow(tw, "Operating system", displayValue(result.Server.OperatingSystem))
-	writeRow(tw, "Kernel version", displayValue(result.Server.Kernel))
-	writeRow(tw, "Server IP address", displayValue(result.Server.PrimaryIP))
+	writeRow(tw, "Hostname", DisplayValue(result.Server.Hostname))
+	writeRow(tw, "Operating system", DisplayValue(result.Server.OperatingSystem))
+	writeRow(tw, "Kernel version", DisplayValue(result.Server.Kernel))
+	writeRow(tw, "Server IP address", DisplayValue(result.Server.PrimaryIP))
 
 	flushTable(tw)
 	fmt.Fprintln(w)
@@ -251,7 +252,7 @@ func writeServices(w io.Writer, result discovery.Result) {
 
 		writeRow(
 			tw,
-			displayValue(service.Server),
+			DisplayValue(service.Server),
 			status,
 		)
 	}
@@ -262,7 +263,7 @@ func writeServices(w io.Writer, result discovery.Result) {
 		fmt.Fprintf(
 			w,
 			"\n  Detected components: %s\n",
-			displayList(result.DetectedServices),
+			DisplayList(result.DetectedServices),
 		)
 	}
 
@@ -288,17 +289,17 @@ func writeDomains(w io.Writer, result discovery.Result) {
 			w,
 			"\n  Website %d: %s\n",
 			index+1,
-			displayValue(domain.Name),
+			DisplayValue(domain.Name),
 		)
 
 		tw := newTableWriter(w)
 
-		writeRow(tw, "Web server", displayValue(domain.Source))
-		writeRow(tw, "Configuration file", displayValue(domain.ConfigPath))
-		writeRow(tw, "Website directory", displayValue(domain.DocumentRoot))
-		writeRow(tw, "Proxy destination", displayValue(domain.ProxyTarget))
-		writeRow(tw, "SSL certificate", displayValue(domain.SSLCertificate))
-		writeRow(tw, "Aliases", displayList(domain.Aliases))
+		writeRow(tw, "Web server", DisplayValue(domain.Source))
+		writeRow(tw, "Configuration file", DisplayValue(domain.ConfigPath))
+		writeRow(tw, "Website directory", DisplayValue(domain.DocumentRoot))
+		writeRow(tw, "Proxy destination", DisplayValue(domain.ProxyTarget))
+		writeRow(tw, "SSL certificate", DisplayValue(domain.SSLCertificate))
+		writeRow(tw, "Aliases", DisplayList(domain.Aliases))
 		writeRow(tw, "Listening ports", displayPorts(domain.Ports))
 
 		flushTable(tw)
@@ -320,24 +321,24 @@ func writeSystemInfo(w io.Writer, result discovery.Result) {
 
 	tw := newTableWriter(w)
 
-	writeRow(tw, "Hostname", displayValue(system.Hostname))
-	writeRow(tw, "IPv4 addresses", displayList(system.IPv4))
-	writeRow(tw, "IPv6 addresses", displayList(system.IPv6))
-	writeRow(tw, "MAC address", displayValue(system.MAC))
+	writeRow(tw, "Hostname", DisplayValue(system.Hostname))
+	writeRow(tw, "IPv4 addresses", DisplayList(system.IPv4))
+	writeRow(tw, "IPv6 addresses", DisplayList(system.IPv6))
+	writeRow(tw, "MAC address", DisplayValue(system.MAC))
 
 	osName := strings.TrimSpace(
-		displayValue(system.ServerOS) + " " + displayValue(system.OSVersion),
+		DisplayValue(system.ServerOS) + " " + DisplayValue(system.OSVersion),
 	)
 	writeRow(tw, "Operating system", osName)
 
-	writeRow(tw, "Architecture", displayValue(system.Architecture))
-	writeRow(tw, "CPU model", displayValue(system.CPUModel))
+	writeRow(tw, "Architecture", DisplayValue(system.Architecture))
+	writeRow(tw, "CPU model", DisplayValue(system.CPUModel))
 	writeRow(tw, "CPU cores", formatCount(system.Cores))
 	writeRow(tw, "CPU threads", formatCount(system.Threads))
-	writeRow(tw, "Kernel version", displayValue(system.Kernel))
-	writeRow(tw, "System uptime", formatUptime(system.Uptime))
-	writeRow(tw, "Current user", displayValue(system.CurrentUser))
-	writeRow(tw, "Time zone", displayValue(system.Timezone))
+	writeRow(tw, "Kernel version", DisplayValue(system.Kernel))
+	writeRow(tw, "System uptime", FormatUptime(system.Uptime))
+	writeRow(tw, "Current user", DisplayValue(system.CurrentUser))
+	writeRow(tw, "Time zone", DisplayValue(system.Timezone))
 
 	flushTable(tw)
 
@@ -408,7 +409,7 @@ func flushTable(w *tabwriter.Writer) {
 	_ = w.Flush()
 }
 
-func displayValue(value string) string {
+func DisplayValue(value string) string {
 	if strings.TrimSpace(value) == "" {
 		return "Not reported"
 	}
@@ -416,7 +417,7 @@ func displayValue(value string) string {
 	return strings.TrimSpace(value)
 }
 
-func displayList(values []string) string {
+func DisplayList(values []string) string {
 	if len(values) == 0 {
 		return "None reported"
 	}
@@ -453,7 +454,7 @@ func formatStorage(value float64) string {
 	return fmt.Sprintf("%.2f GiB", value)
 }
 
-func formatUptime(seconds uint64) string {
+func FormatUptime(seconds uint64) string {
 	const (
 		secondsPerDay  = 86400
 		secondsPerHour = 3600
@@ -502,11 +503,11 @@ func scanStatusLabel(status string) string {
 	case "failed", "error":
 		return "FAILED"
 	default:
-		return displayValue(status)
+		return DisplayValue(status)
 	}
 }
 
-func writeError(output io.Writer, code string, err error, jsonMode bool) error {
+func WriteError(output io.Writer, code string, err error, jsonMode bool) error {
 	if err == nil {
 		return nil
 	}
@@ -531,12 +532,12 @@ func writeError(output io.Writer, code string, err error, jsonMode bool) error {
 		outputErr = fmt.Errorf("write human-readable error output: %w", err)
 	}
 
-	logErr := appendJSONEvent(scanErrorsFile, event)
+	logErr := appendJSONEvent(ScanErrorsFile, event)
 	return errors.Join(outputErr, logErr)
 }
 
 func saveScanResult(result any) error {
-	data, err := marshalJSON(result, false)
+	data, err := MarshalJSON(result, false)
 	if err != nil {
 		return fmt.Errorf("encode scan result: %w", err)
 	}
@@ -561,8 +562,8 @@ func saveScanResult(result any) error {
 	}
 
 	// Save only the scan result.
-	if err := appendJSONResult(scanResultsFile, data); err != nil {
-		return fmt.Errorf("save scan result to %s: %w", scanResultsFile, err)
+	if err := appendJSONResult(ScanResultsFile, data); err != nil {
+		return fmt.Errorf("save scan result to %s: %w", ScanResultsFile, err)
 	}
 
 	// Save warning/error events separately.
@@ -577,10 +578,10 @@ func saveScanResult(result any) error {
 		}
 
 		for _, event := range events {
-			if err := appendJSONEvent(scanErrorsFile, event); err != nil {
+			if err := appendJSONEvent(ScanErrorsFile, event); err != nil {
 				return fmt.Errorf(
 					"save warning event to %s: %w",
-					scanErrorsFile,
+					ScanErrorsFile,
 					err,
 				)
 			}
@@ -601,11 +602,11 @@ func appendJSONEvent(path string, event discovery.ScanError) error {
 	return nil
 }
 
-func saveFailedScanResult(scannedAt time.Time) error {
-	return saveFailedScanResultTo(scanResultsFile, scannedAt)
+func SaveFailedScanResult(scannedAt time.Time) error {
+	return SaveFailedScanResultTo(ScanResultsFile, scannedAt)
 }
 
-func saveFailedScanResultTo(path string, scannedAt time.Time) error {
+func SaveFailedScanResultTo(path string, scannedAt time.Time) error {
 	if scannedAt.IsZero() {
 		scannedAt = time.Now().UTC()
 	}
@@ -624,7 +625,7 @@ func saveFailedScanResultTo(path string, scannedAt time.Time) error {
 	return nil
 }
 
-func requestsJSONOutput(args []string) bool {
+func RequestsJSONOutput(args []string) bool {
 	for _, arg := range args {
 		switch arg {
 		case "--json", "--compact", "--pretty":

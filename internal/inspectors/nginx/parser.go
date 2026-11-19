@@ -14,7 +14,6 @@ var (
 	serverName  = regexp.MustCompile(`(?m)^[ \t]*server_name[ \t]+([^;]+);`)
 	root        = regexp.MustCompile(`(?m)^[ \t]*root[ \t]+([^;]+);`)
 	proxy       = regexp.MustCompile(`(?m)^[ \t]*proxy_pass[ \t]+([^;]+);`)
-	listen      = regexp.MustCompile(`(?m)^[ \t]*listen[ \t]+([^;]+);`)
 	certificate = regexp.MustCompile(`(?m)^[ \t]*ssl_certificate[ \t]+([^;]+);`)
 )
 
@@ -51,7 +50,7 @@ func Parse(config string) []inspectors.Domain {
 			Source:     "nginx",
 			ConfigPath: configPath,
 			Aliases:    append([]string{}, hosts[1:]...),
-			Ports:      parsePorts(block),
+			Ports:      inspectors.ParsePorts(block),
 		}
 
 		if len(domain.Ports) == 0 {

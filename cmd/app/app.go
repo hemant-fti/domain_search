@@ -1,4 +1,4 @@
-package main
+package app
 
 import (
 	"context"
@@ -7,7 +7,7 @@ import (
 	"syscall"
 )
 
-func runApplication() error {
+func RunApplication() error {
 	ctx, stop := signal.NotifyContext(
 		context.Background(),
 		os.Interrupt,

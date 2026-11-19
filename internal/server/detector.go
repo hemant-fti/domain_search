@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	osExec "domain-search/internal/os"
+	osExec "domain-search/internal/executor"
 )
 
 type Detector struct{}

@@ -8,11 +8,11 @@ import (
 	"time"
 
 	"domain-search/internal/dns"
+	osExec "domain-search/internal/executor"
 	"domain-search/internal/inspectors"
 	"domain-search/internal/inspectors/apache"
 	"domain-search/internal/inspectors/nginx"
 	"domain-search/internal/inspectors/system"
-	osExec "domain-search/internal/os"
 	"domain-search/internal/server"
 )
 

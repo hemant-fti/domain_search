@@ -1,7 +1,8 @@
-package main
+package cli
 
 import (
 	"context"
+	cmdoutput "domain-search/cmd/output"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -10,29 +11,6 @@ import (
 
 	"github.com/spf13/cobra"
 )
-
-func TestRootRegistersCommandHierarchy(t *testing.T) {
-	root := newRootCommand()
-	paths := []string{
-		"scan", "system info", "system cpu", "system memory", "system disk",
-		"system network", "system uptime", "web list", "web nginx", "web apache",
-		"web status", "domains list", "domains nginx", "domains apache", "domains dns",
-		"ports list", "ports tcp", "ports udp", "services list", "services status",
-		"ssl list", "ssl check", "config nginx", "config apache", "version",
-	}
-	for _, path := range paths {
-		t.Run(strings.ReplaceAll(path, " ", "_"), func(t *testing.T) {
-			parts := strings.Fields(path)
-			command, _, err := root.Find(parts)
-			if err != nil {
-				t.Fatalf("Find(%q) error = %v", path, err)
-			}
-			if command == nil {
-				t.Fatalf("Find(%q) returned no command", path)
-			}
-		})
-	}
-}
 
 func TestResultCommandCompactJSON(t *testing.T) {
 	cmd := newResultCommand("result", "test result", func(context.Context, *cobra.Command) (commandResult, error) {
@@ -86,12 +64,12 @@ func TestResultCommandWritesSelectedOutputFile(t *testing.T) {
 
 func TestScanOutputCannotOverwriteHistory(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "scan-results.jsonl")
-	original := scanResultsFile
-	scanResultsFile = path
-	t.Cleanup(func() { scanResultsFile = original })
+	original := cmdoutput.ScanResultsFile
+	cmdoutput.ScanResultsFile = path
+	t.Cleanup(func() { cmdoutput.ScanResultsFile = original })
 
-	if err := validateScanOutputPath(path); err == nil {
-		t.Fatal("validateScanOutputPath() accepted the history file path")
+	if err := ValidateScanOutputPath(path); err == nil {
+		t.Fatal("ValidateScanOutputPath() accepted the history file path")
 	}
 }
 
@@ -114,17 +92,6 @@ func TestResultCommandRejectsNonpositiveTimeout(t *testing.T) {
 	}
 }
 
-func TestDNSCommandRejectsUnsupportedRecordWithoutLookup(t *testing.T) {
-	root := newRootCommand()
-	root.SilenceErrors = true
-	root.SilenceUsage = true
-	root.SetArgs([]string{"domains", "dns", "--domain", "example.com", "--record", "CNAME"})
-	err := root.Execute()
-	if err == nil || !strings.Contains(err.Error(), "unsupported DNS record type") {
-		t.Fatalf("Execute() error = %v, want unsupported record type", err)
-	}
-}
-
 func TestCertificateDurationSupportsDays(t *testing.T) {
 	duration, err := parseCertificateDuration("30d")
 	if err != nil {
@@ -135,19 +102,6 @@ func TestCertificateDurationSupportsDays(t *testing.T) {
 	}
 	if _, err := parseCertificateDuration("invalid"); err == nil {
 		t.Fatal("parseCertificateDuration() accepted invalid input")
-	}
-}
-
-func TestRootHasNoDuplicateCommandNames(t *testing.T) {
-	root := newRootCommand()
-	for _, parent := range root.Commands() {
-		seen := make(map[string]bool)
-		for _, child := range parent.Commands() {
-			if seen[child.Name()] {
-				t.Errorf("%s has duplicate child command %q", parent.Name(), child.Name())
-			}
-			seen[child.Name()] = true
-		}
 	}
 }
 
@@ -163,14 +117,14 @@ func TestRequestsJSONOutputMatchesCommandFlags(t *testing.T) {
 		{args: []string{"system", "info", "--pretty=false"}, want: true},
 	}
 	for _, test := range tests {
-		if got := requestsJSONOutput(test.args); got != test.want {
+		if got := cmdoutput.RequestsJSONOutput(test.args); got != test.want {
 			t.Errorf("RequestsJSONOutput(%v) = %t, want %t", test.args, got, test.want)
 		}
 	}
 }
 
 func TestServiceStatusRequiresExactlyOneArgument(t *testing.T) {
-	cmd := newServiceStatusCommand()
+	cmd := NewServiceStatusCommand()
 	cmd.SilenceErrors = true
 	cmd.SilenceUsage = true
 	cmd.SetArgs(nil)

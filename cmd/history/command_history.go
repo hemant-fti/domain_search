@@ -1,4 +1,4 @@
-package main
+package history
 
 import (
 	"bytes"
@@ -15,11 +15,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const logDirectory = "logs"
+const LogDirectory = "logs"
 
 var (
-	commandResultsFile = filepath.Join(logDirectory, "command-results.jsonl")
-	commandErrorsFile  = filepath.Join(logDirectory, "command-errors.jsonl")
+	commandResultsFile = filepath.Join(LogDirectory, "command-results.jsonl")
+	commandErrorsFile  = filepath.Join(LogDirectory, "command-errors.jsonl")
 
 	commandLogMu sync.Mutex
 
@@ -30,15 +30,15 @@ var (
 	)
 )
 
-func ensureLogDirectory() error {
-	if err := os.MkdirAll(logDirectory, 0755); err != nil {
+func EnsureLogDirectory() error {
+	if err := os.MkdirAll(LogDirectory, 0755); err != nil {
 		return fmt.Errorf("create logs directory: %w", err)
 	}
 
 	return nil
 }
 
-type commandOutputCaptureKey struct{}
+type CommandOutputCaptureKey struct{}
 
 type commandHistoryRecord struct {
 	Command    string    `json:"command"`
@@ -62,8 +62,8 @@ type commandErrorRecord struct {
 	} `json:"error"`
 }
 
-func captureCommandFileOutput(ctx context.Context, data []byte) {
-	buffer, ok := ctx.Value(commandOutputCaptureKey{}).(*bytes.Buffer)
+func CaptureCommandFileOutput(ctx context.Context, data []byte) {
+	buffer, ok := ctx.Value(CommandOutputCaptureKey{}).(*bytes.Buffer)
 	if !ok {
 		return
 	}
@@ -108,7 +108,7 @@ func sanitizeCommandOutput(value string) string {
 }
 
 func appendCommandJSON(path string, record any) error {
-	if err := ensureLogDirectory(); err != nil {
+	if err := EnsureLogDirectory(); err != nil {
 		return err
 	}
 	data, err := json.Marshal(record)
@@ -131,7 +131,7 @@ func appendCommandJSON(path string, record any) error {
 	return err
 }
 
-func recordCommandExecution(
+func RecordCommandExecution(
 	cmd *cobra.Command,
 	args []string,
 	startedAt time.Time,

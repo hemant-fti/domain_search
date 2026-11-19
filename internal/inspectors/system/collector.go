@@ -3,6 +3,7 @@ package system
 import (
 	"context"
 	"fmt"
+	"os/user"
 	"runtime"
 	"strings"
 	"time"
@@ -30,7 +31,11 @@ func CollectSystemInfo(ctx context.Context) (server.SystemInfo, []string, error)
 	info.Kernel = hostInfo.KernelVersion
 	info.Uptime = hostInfo.Uptime
 
-	info.CurrentUser = currentUser()
+	currentUser, err := user.Current()
+	if err != nil {
+		return info, nil, fmt.Errorf("get current user: %w", err)
+	}
+	info.CurrentUser = currentUser.Username
 	info.Timezone = time.Now().Location().String()
 
 	if info.Timezone == "" {

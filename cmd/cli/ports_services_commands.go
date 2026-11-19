@@ -1,4 +1,4 @@
-package main
+package cli
 
 import (
 	"context"
@@ -11,11 +11,11 @@ import (
 	"github.com/spf13/cobra"
 
 	"domain-search/internal/discovery"
-	ssh "domain-search/internal/os"
-	"domain-search/internal/ports"
+	ssh "domain-search/internal/executor"
+	ports "domain-search/internal/inspectors"
 )
 
-func newPortsListCommand(fixedProtocol string) *cobra.Command {
+func NewPortsListCommand(fixedProtocol string) *cobra.Command {
 	use := "list"
 	short := "List local listening TCP and UDP sockets"
 	if fixedProtocol != "" {
@@ -163,7 +163,7 @@ func listServices(ctx context.Context, ex ssh.Executor) ([]serviceRecord, error)
 	return list, nil
 }
 
-func newServicesListCommand() *cobra.Command {
+func NewServicesListCommand() *cobra.Command {
 	var running, stopped, enabled bool
 	cmd := newResultCommand("list", "List system services and their status", func(ctx context.Context, _ *cobra.Command) (commandResult, error) {
 		services, err := listServices(ctx, ssh.NewLocalExecutor())
@@ -202,7 +202,7 @@ func newServicesListCommand() *cobra.Command {
 	return cmd
 }
 
-func newServiceStatusCommand() *cobra.Command {
+func NewServiceStatusCommand() *cobra.Command {
 	var serviceName string
 	cmd := newResultCommand("status <service>", "Show active and enabled state for a service", func(ctx context.Context, _ *cobra.Command) (commandResult, error) {
 		if err := discovery.EnsureLinux("system service inspection"); err != nil {

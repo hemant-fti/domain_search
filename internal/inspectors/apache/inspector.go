@@ -3,8 +3,8 @@ package apache
 import (
 	"context"
 
+	ssh "domain-search/internal/executor"
 	"domain-search/internal/inspectors"
-	ssh "domain-search/internal/os"
 )
 
 type Inspector struct{}
@@ -18,11 +18,11 @@ func (i *Inspector) Name() string {
 }
 
 func (i *Inspector) Detect(ctx context.Context, ex ssh.Executor) (bool, error) {
-	return detectApache(ctx, ex)
+	return inspectors.DetectWebServer(ctx, ex, "apache")
 }
 
 func (i *Inspector) Running(ctx context.Context, ex ssh.Executor) (bool, error) {
-	return isApacheRunning(ctx, ex)
+	return inspectors.IsWebServerRunning(ctx, ex, "apache")
 }
 
 func (i *Inspector) Discover(ctx context.Context, ex ssh.Executor) ([]inspectors.Domain, error) {

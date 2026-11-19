@@ -1,10 +1,13 @@
-package main
+package cli
 
 import (
 	"context"
 	"fmt"
 	"os"
 	"time"
+
+	"domain-search/cmd/history"
+	cmdoutput "domain-search/cmd/output"
 
 	"github.com/spf13/cobra"
 )
@@ -22,9 +25,11 @@ type commandResult struct {
 	human string
 }
 
+const DefaultTimeout = 2 * time.Minute
+
 func newResultCommand(use, short string, run func(context.Context, *cobra.Command) (commandResult, error)) *cobra.Command {
 	var options commandOutputOptions
-	options.timeout = defaultTimeout
+	options.timeout = DefaultTimeout
 	options.pretty = true
 
 	cmd := &cobra.Command{
@@ -49,7 +54,7 @@ func newResultCommand(use, short string, run func(context.Context, *cobra.Comman
 
 			useJSON := options.jsonl || options.compact || cmd.Flags().Changed("pretty")
 			if useJSON {
-				data, err := marshalJSON(result.value, options.pretty)
+				data, err := cmdoutput.MarshalJSON(result.value, options.pretty)
 				if err != nil {
 					return fmt.Errorf("encode command result: %w", err)
 				}
@@ -75,7 +80,7 @@ func newResultCommand(use, short string, run func(context.Context, *cobra.Comman
 	cmd.Flags().BoolVar(&options.jsonl, "json", false, "emit JSON output")
 	cmd.Flags().BoolVar(&options.pretty, "pretty", true, "indent JSON output (implies --json)")
 	cmd.Flags().BoolVar(&options.compact, "compact", false, "emit compact JSON output")
-	cmd.Flags().DurationVar(&options.timeout, "timeout", defaultTimeout, "maximum command duration")
+	cmd.Flags().DurationVar(&options.timeout, "timeout", DefaultTimeout, "maximum command duration")
 	cmd.Flags().StringVarP(&options.output, "output", "o", "", "write the result to a file")
 	return cmd
 }
@@ -86,7 +91,7 @@ func writeCommandOutput(cmd *cobra.Command, path string, data []byte) error {
 			return fmt.Errorf("write output file %s: %w", path, err)
 		}
 
-		captureCommandFileOutput(cmd.Context(), data)
+		history.CaptureCommandFileOutput(cmd.Context(), data)
 		return nil
 	}
 
@@ -101,61 +106,61 @@ func textResult(value any, human string) commandResult {
 	return commandResult{value: value, human: human}
 }
 
-func newSystemCommand() *cobra.Command {
+func NewSystemCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "system", Short: "Inspect local system information"}
-	cmd.AddCommand(newSystemInfoCommand())
-	cmd.AddCommand(newSystemCPUCommand())
-	cmd.AddCommand(newSystemMemoryCommand())
-	cmd.AddCommand(newSystemDiskCommand())
-	cmd.AddCommand(newSystemNetworkCommand())
-	cmd.AddCommand(newSystemUptimeCommand())
+	cmd.AddCommand(NewSystemInfoCommand())
+	cmd.AddCommand(NewSystemCPUCommand())
+	cmd.AddCommand(NewSystemMemoryCommand())
+	cmd.AddCommand(NewSystemDiskCommand())
+	cmd.AddCommand(NewSystemNetworkCommand())
+	cmd.AddCommand(NewSystemUptimeCommand())
 	return cmd
 }
 
-func newWebCommand() *cobra.Command {
+func NewWebCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "web", Short: "Inspect configured web servers"}
-	cmd.AddCommand(newWebListCommand())
-	cmd.AddCommand(newWebServerCommand("nginx"))
-	cmd.AddCommand(newWebServerCommand("apache"))
-	cmd.AddCommand(newWebStatusCommand())
+	cmd.AddCommand(NewWebListCommand())
+	cmd.AddCommand(NewWebServerCommand("nginx"))
+	cmd.AddCommand(NewWebServerCommand("apache"))
+	cmd.AddCommand(NewWebStatusCommand())
 	return cmd
 }
 
-func newDomainsCommand() *cobra.Command {
+func NewDomainsCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "domains", Short: "Discover configured domains and perform DNS lookups"}
-	cmd.AddCommand(newDomainsListCommand())
-	cmd.AddCommand(newDomainsServerCommand("nginx"))
-	cmd.AddCommand(newDomainsServerCommand("apache"))
-	cmd.AddCommand(newDomainsDNSCommand())
-	cmd.AddCommand(newDomainsGetdatabyServerNameCommand())
+	cmd.AddCommand(NewDomainsListCommand())
+	cmd.AddCommand(NewDomainsServerCommand("nginx"))
+	cmd.AddCommand(NewDomainsServerCommand("apache"))
+	cmd.AddCommand(NewDomainsDNSCommand())
+	cmd.AddCommand(NewDomainsGetdatabyServerNameCommand())
 	return cmd
 }
 
-func newPortsCommand() *cobra.Command {
+func NewPortsCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "ports", Short: "List local TCP and UDP sockets"}
-	cmd.AddCommand(newPortsListCommand(""))
-	cmd.AddCommand(newPortsListCommand("tcp"))
-	cmd.AddCommand(newPortsListCommand("udp"))
+	cmd.AddCommand(NewPortsListCommand(""))
+	cmd.AddCommand(NewPortsListCommand("tcp"))
+	cmd.AddCommand(NewPortsListCommand("udp"))
 	return cmd
 }
 
-func newServicesCommand() *cobra.Command {
+func NewServicesCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "services", Short: "Inspect system services"}
-	cmd.AddCommand(newServicesListCommand())
-	cmd.AddCommand(newServiceStatusCommand())
+	cmd.AddCommand(NewServicesListCommand())
+	cmd.AddCommand(NewServiceStatusCommand())
 	return cmd
 }
 
-func newSSLCommand() *cobra.Command {
+func NewSSLCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "ssl", Short: "Inspect certificates referenced by local web server configuration"}
-	cmd.AddCommand(newCertificateCommand("list"))
-	cmd.AddCommand(newCertificateCommand("check"))
+	cmd.AddCommand(NewCertificateCommand("list"))
+	cmd.AddCommand(NewCertificateCommand("check"))
 	return cmd
 }
 
-func newConfigCommand() *cobra.Command {
+func NewConfigCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "config", Short: "Inspect web server configuration"}
-	cmd.AddCommand(newConfigServerCommand("nginx"))
-	cmd.AddCommand(newConfigServerCommand("apache"))
+	cmd.AddCommand(NewConfigServerCommand("nginx"))
+	cmd.AddCommand(NewConfigServerCommand("apache"))
 	return cmd
 }

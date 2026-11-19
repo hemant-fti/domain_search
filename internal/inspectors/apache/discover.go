@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
+	ssh "domain-search/internal/executor"
 	"domain-search/internal/inspectors"
-	ssh "domain-search/internal/os"
 )
 
 func discoverApache(ctx context.Context, ex ssh.Executor) ([]inspectors.Domain, error) {

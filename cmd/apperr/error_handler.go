@@ -1,12 +1,13 @@
-package main
+package apperr
 
 import (
+	outpt "domain-search/cmd/output"
 	"fmt"
 	"os"
 )
 
-func handleCommandError(err error) error {
-	jsonOutput := requestsJSONOutput(os.Args[1:])
+func HandleCommandError(err error) error {
+	jsonOutput := outpt.RequestsJSONOutput(os.Args[1:])
 
 	output := os.Stderr
 
@@ -14,7 +15,7 @@ func handleCommandError(err error) error {
 		output = os.Stdout
 	}
 
-	if writeErr := writeError(
+	if writeErr := outpt.WriteError(
 		output,
 		"command_failed",
 		err,

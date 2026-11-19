@@ -1,4 +1,4 @@
-package main
+package cli
 
 import (
 	"bytes"
@@ -12,15 +12,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/spf13/cobra"
-
+	cmdoutput "domain-search/cmd/output"
 	"domain-search/internal/discovery"
-	ssh "domain-search/internal/os"
+	ssh "domain-search/internal/executor"
+
+	"github.com/spf13/cobra"
 )
 
-const defaultTimeout = 2 * time.Minute
-
-func newScanCommand() *cobra.Command {
+func NewScanCommand() *cobra.Command {
 	var (
 		jsonOutput bool
 		pretty     bool
@@ -53,24 +52,46 @@ func newScanCommand() *cobra.Command {
 
 			useJSON := jsonOutput || compact ||
 				cmd.Flags().Changed("pretty")
-			return runDiscovery(cmd, ctx, outputPath, useJSON, pretty)
+			return RunDiscovery(cmd, ctx, outputPath, useJSON, pretty)
 		},
 	}
 
 	cmd.Flags().BoolVar(&jsonOutput, "json", false, "emit JSON output instead of human-readable text")
 	cmd.Flags().BoolVar(&pretty, "pretty", true, "indent JSON output (implies --json)")
 	cmd.Flags().BoolVar(&compact, "compact", false, "emit compact JSON output")
-	cmd.Flags().DurationVar(&timeout, "timeout", defaultTimeout, "maximum scan duration")
+	cmd.Flags().DurationVar(&timeout, "timeout", DefaultTimeout, "maximum scan duration")
 	cmd.Flags().StringVarP(&outputPath, "output", "o", "", "write the result to a file")
 
 	return cmd
+}
+
+func RunDiscovery(cmd *cobra.Command, ctx context.Context, outputPath string, useJSON, pretty bool) error {
+	service := discovery.NewLocalService()
+
+	result, err := service.Discover(ctx, ssh.NewLocalExecutor())
+	if err != nil {
+		if recordErr := cmdoutput.SaveFailedScanResult(result.ScannedAt); recordErr != nil {
+			return fmt.Errorf(
+				"discovery failed: %w (failed to record unsuccessful scan: %v)",
+				err,
+				recordErr,
+			)
+		}
+		return fmt.Errorf("discovery failed: %w", err)
+	}
+
+	if err := writeScanOutput(cmd, outputPath, result, useJSON, pretty); err != nil {
+		return fmt.Errorf("write discovery result: %w", err)
+	}
+
+	return nil
 }
 
 func writeScanOutput(cmd *cobra.Command, path string, result discovery.Result, useJSON, pretty bool) (returnErr error) {
 	var output io.Writer = cmd.OutOrStdout()
 	var file *os.File
 	if path != "" {
-		if err := validateScanOutputPath(path); err != nil {
+		if err := ValidateScanOutputPath(path); err != nil {
 			return err
 		}
 		var err error
@@ -88,17 +109,17 @@ func writeScanOutput(cmd *cobra.Command, path string, result discovery.Result, u
 	}
 
 	if useJSON {
-		return writeJSONTo(output, result, pretty)
+		return cmdoutput.WriteJSONTo(output, result, pretty)
 	}
-	return writeHuman(output, result)
+	return cmdoutput.WriteHuman(output, result)
 }
 
-func validateScanOutputPath(path string) error {
+func ValidateScanOutputPath(path string) error {
 	outputPath, err := filepath.Abs(path)
 	if err != nil {
 		return fmt.Errorf("resolve output file path: %w", err)
 	}
-	for _, historyPath := range []string{scanResultsFile, scanErrorsFile} {
+	for _, historyPath := range []string{cmdoutput.ScanResultsFile, cmdoutput.ScanErrorsFile} {
 		resolvedHistoryPath, err := filepath.Abs(historyPath)
 		if err != nil {
 			return fmt.Errorf("resolve scan history path: %w", err)
@@ -111,27 +132,5 @@ func validateScanOutputPath(path string) error {
 			return fmt.Errorf("output file cannot be the scan history file %s", historyPath)
 		}
 	}
-	return nil
-}
-
-func runDiscovery(cmd *cobra.Command, ctx context.Context, outputPath string, useJSON, pretty bool) error {
-	service := discovery.NewLocalService()
-
-	result, err := service.Discover(ctx, ssh.NewLocalExecutor())
-	if err != nil {
-		if recordErr := saveFailedScanResult(result.ScannedAt); recordErr != nil {
-			return fmt.Errorf(
-				"discovery failed: %w (failed to record unsuccessful scan: %v)",
-				err,
-				recordErr,
-			)
-		}
-		return fmt.Errorf("discovery failed: %w", err)
-	}
-
-	if err := writeScanOutput(cmd, outputPath, result, useJSON, pretty); err != nil {
-		return fmt.Errorf("write discovery result: %w", err)
-	}
-
 	return nil
 }

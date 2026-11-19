@@ -1,4 +1,4 @@
-package main
+package cli
 
 import (
 	"context"
@@ -7,25 +7,26 @@ import (
 
 	"github.com/spf13/cobra"
 
+	cmdoutput "domain-search/cmd/output"
 	"domain-search/internal/discovery"
 	"domain-search/internal/dns"
+	ssh "domain-search/internal/executor"
 	"domain-search/internal/inspectors"
-	ssh "domain-search/internal/os"
 )
 
-func newWebListCommand() *cobra.Command {
-	return newWebInspectionCommand("list", "List installed Nginx and Apache servers", "")
+func NewWebListCommand() *cobra.Command {
+	return NewWebInspectionCommand("list", "List installed Nginx and Apache servers", "")
 }
 
-func newWebServerCommand(name string) *cobra.Command {
-	return newWebInspectionCommand(name, "Inspect "+name+" installation and status", name)
+func NewWebServerCommand(name string) *cobra.Command {
+	return NewWebInspectionCommand(name, "Inspect "+name+" installation and status", name)
 }
 
-func newWebStatusCommand() *cobra.Command {
-	return newWebInspectionCommand("status", "Show whether Nginx and Apache are running", "")
+func NewWebStatusCommand() *cobra.Command {
+	return NewWebInspectionCommand("status", "Show whether Nginx and Apache are running", "")
 }
 
-func newWebInspectionCommand(use, short, name string) *cobra.Command {
+func NewWebInspectionCommand(use, short, name string) *cobra.Command {
 	var config, versionFlag, domains bool
 	cmd := newResultCommand(use, short, func(ctx context.Context, _ *cobra.Command) (commandResult, error) {
 		names := []string{name}
@@ -79,15 +80,15 @@ func newWebInspectionCommand(use, short, name string) *cobra.Command {
 	return cmd
 }
 
-func newDomainsListCommand() *cobra.Command {
-	return newDomainsCommandForServer("list", "")
+func NewDomainsListCommand() *cobra.Command {
+	return NewDomainsCommandForServer("list", "")
 }
 
-func newDomainsServerCommand(name string) *cobra.Command {
-	return newDomainsCommandForServer(name, name)
+func NewDomainsServerCommand(name string) *cobra.Command {
+	return NewDomainsCommandForServer(name, name)
 }
 
-func newDomainsCommandForServer(use, serverName string) *cobra.Command {
+func NewDomainsCommandForServer(use, serverName string) *cobra.Command {
 	var serverFilter, configPath, documentRoot string
 	var port int
 	var aliases bool
@@ -113,7 +114,7 @@ func newDomainsCommandForServer(use, serverName string) *cobra.Command {
 		}
 		filtered := make([]inspectors.Domain, 0, len(domains))
 		for _, domain := range domains {
-			if port != 0 && !containsPort(domain.Ports, port) {
+			if port != 0 && !ContainsPort(domain.Ports, port) {
 				continue
 			}
 			if configPath != "" && domain.ConfigPath != configPath {
@@ -160,14 +161,14 @@ func newDomainsCommandForServer(use, serverName string) *cobra.Command {
 	return cmd
 }
 
-func newDomainsDNSCommand() *cobra.Command {
+func NewDomainsDNSCommand() *cobra.Command {
 	var domain, record string
 	cmd := newResultCommand("dns", "Look up DNS records using the configured resolver", func(ctx context.Context, _ *cobra.Command) (commandResult, error) {
 		result, err := dns.NewResolver().LookupRecord(ctx, record, domain)
 		if err != nil {
 			return commandResult{}, err
 		}
-		human := fmt.Sprintf("%s records for %s:\n%s", result.Type, result.Domain, displayList(result.Records))
+		human := fmt.Sprintf("%s records for %s:\n%s", result.Type, result.Domain, cmdoutput.DisplayList(result.Records))
 		return textResult(result, human), nil
 	})
 	cmd.Long = "Look up DNS records through the system resolver. This performs DNS lookup only; it does not enumerate authoritative DNS records."
@@ -179,7 +180,7 @@ func newDomainsDNSCommand() *cobra.Command {
 	return cmd
 }
 
-func containsPort(ports []int, port int) bool {
+func ContainsPort(ports []int, port int) bool {
 	for _, current := range ports {
 		if current == port {
 			return true
@@ -188,7 +189,7 @@ func containsPort(ports []int, port int) bool {
 	return false
 }
 
-func newDomainsGetdatabyServerNameCommand() *cobra.Command {
+func NewDomainsGetdatabyServerNameCommand() *cobra.Command {
 	var domainName string
 
 	cmd := newResultCommand(

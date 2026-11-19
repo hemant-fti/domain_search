@@ -6,8 +6,8 @@ import (
 	"runtime"
 	"testing"
 
+	osExec "domain-search/internal/executor"
 	"domain-search/internal/inspectors"
-	osExec "domain-search/internal/os"
 )
 
 type inspectionExecutor struct {

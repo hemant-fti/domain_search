@@ -3,8 +3,8 @@ package discovery
 import (
 	"context"
 
+	osExec "domain-search/internal/executor"
 	"domain-search/internal/inspectors"
-	osExec "domain-search/internal/os"
 )
 
 // statusInspector checks whether a service is running.

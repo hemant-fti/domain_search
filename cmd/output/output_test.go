@@ -1,4 +1,4 @@
-package main
+package output
 
 import (
 	"bytes"
@@ -19,13 +19,13 @@ import (
 
 func TestWriteHumanIncludesDiscoveryFields(t *testing.T) {
 	dir := t.TempDir()
-	originalResultsPath := scanResultsFile
-	originalErrorsPath := scanErrorsFile
-	scanResultsFile = filepath.Join(t.TempDir(), "scan-results.jsonl")
-	scanErrorsFile = filepath.Join(dir, "scan-errors.jsonl")
+	originalResultsPath := ScanResultsFile
+	originalErrorsPath := ScanErrorsFile
+	ScanResultsFile = filepath.Join(t.TempDir(), "scan-results.jsonl")
+	ScanErrorsFile = filepath.Join(dir, "scan-errors.jsonl")
 	t.Cleanup(func() {
-		scanResultsFile = originalResultsPath
-		scanErrorsFile = originalErrorsPath
+		ScanResultsFile = originalResultsPath
+		ScanErrorsFile = originalErrorsPath
 	})
 
 	result := discovery.Result{
@@ -91,8 +91,8 @@ func TestWriteHumanIncludesDiscoveryFields(t *testing.T) {
 	}
 
 	var output bytes.Buffer
-	if err := writeHuman(&output, result); err != nil {
-		t.Fatalf("writeHuman() error = %v", err)
+	if err := WriteHuman(&output, result); err != nil {
+		t.Fatalf("WriteHuman() error = %v", err)
 	}
 
 	normalizedOutput := strings.Join(strings.Fields(output.String()), " ")
@@ -243,13 +243,13 @@ func TestSaveScanResultSeparatesScanAndWarningEvents(t *testing.T) {
 	dir := t.TempDir()
 	resultsPath := filepath.Join(dir, "scan-results.jsonl")
 	errorsPath := filepath.Join(dir, "scan-errors.jsonl")
-	originalResultsPath := scanResultsFile
-	originalErrorsPath := scanErrorsFile
-	scanResultsFile = resultsPath
-	scanErrorsFile = errorsPath
+	originalResultsPath := ScanResultsFile
+	originalErrorsPath := ScanErrorsFile
+	ScanResultsFile = resultsPath
+	ScanErrorsFile = errorsPath
 	t.Cleanup(func() {
-		scanResultsFile = originalResultsPath
-		scanErrorsFile = originalErrorsPath
+		ScanResultsFile = originalResultsPath
+		ScanErrorsFile = originalErrorsPath
 	})
 
 	scannedAt := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
@@ -300,9 +300,9 @@ func TestSaveScanResultSeparatesScanAndWarningEvents(t *testing.T) {
 
 func TestSaveScanResultAppendsMultipleSuccessfulScans(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "scan-results.jsonl")
-	originalPath := scanResultsFile
-	scanResultsFile = path
-	t.Cleanup(func() { scanResultsFile = originalPath })
+	originalPath := ScanResultsFile
+	ScanResultsFile = path
+	t.Cleanup(func() { ScanResultsFile = originalPath })
 
 	for _, status := range []string{"completed", "completed_with_warnings"} {
 		if err := saveScanResult(discovery.Result{Status: status}); err != nil {
@@ -324,19 +324,19 @@ func TestWriteErrorLogsStructuredErrorWithoutExposingDetails(t *testing.T) {
 	dir := t.TempDir()
 	resultsPath := filepath.Join(dir, "scan-results.jsonl")
 	errorsPath := filepath.Join(dir, "scan-errors.jsonl")
-	originalResultsPath := scanResultsFile
-	originalErrorsPath := scanErrorsFile
-	scanResultsFile = resultsPath
-	scanErrorsFile = errorsPath
+	originalResultsPath := ScanResultsFile
+	originalErrorsPath := ScanErrorsFile
+	ScanResultsFile = resultsPath
+	ScanErrorsFile = errorsPath
 	t.Cleanup(func() {
-		scanResultsFile = originalResultsPath
-		scanErrorsFile = originalErrorsPath
+		ScanResultsFile = originalResultsPath
+		ScanErrorsFile = originalErrorsPath
 	})
 
 	const technical = "nginx: open /etc/nginx/sites-enabled/example.conf: permission denied"
 	var output bytes.Buffer
-	if err := writeError(&output, "command_failed", fmt.Errorf("%s", technical), false); err != nil {
-		t.Fatalf("writeError() error = %v", err)
+	if err := WriteError(&output, "command_failed", fmt.Errorf("%s", technical), false); err != nil {
+		t.Fatalf("WriteError() error = %v", err)
 	}
 	if strings.Contains(output.String(), technical) ||
 		strings.Contains(output.String(), "/etc/nginx") ||
@@ -352,15 +352,15 @@ func TestWriteErrorLogsStructuredErrorWithoutExposingDetails(t *testing.T) {
 		t.Errorf("logged details = %#v, want %q", records[0]["details"], technical)
 	}
 	if _, err := os.Stat(resultsPath); !os.IsNotExist(err) {
-		t.Errorf("writeError() created or accessed scan results file: %v", err)
+		t.Errorf("WriteError() created or accessed scan results file: %v", err)
 	}
 }
 
 func TestSaveFailedScanResultAppendsFailureRecord(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "scan-results.jsonl")
 	timestamp := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
-	if err := saveFailedScanResultTo(path, timestamp); err != nil {
-		t.Fatalf("saveFailedScanResultTo() error = %v", err)
+	if err := SaveFailedScanResultTo(path, timestamp); err != nil {
+		t.Fatalf("SaveFailedScanResultTo() error = %v", err)
 	}
 
 	records := readjsonRecords(t, path)
@@ -373,21 +373,21 @@ func TestFailedScanLogsOneErrorEvent(t *testing.T) {
 	dir := t.TempDir()
 	resultsPath := filepath.Join(dir, "scan-results.jsonl")
 	errorsPath := filepath.Join(dir, "scan-errors.jsonl")
-	originalResultsPath := scanResultsFile
-	originalErrorsPath := scanErrorsFile
-	scanResultsFile = resultsPath
-	scanErrorsFile = errorsPath
+	originalResultsPath := ScanResultsFile
+	originalErrorsPath := ScanErrorsFile
+	ScanResultsFile = resultsPath
+	ScanErrorsFile = errorsPath
 	t.Cleanup(func() {
-		scanResultsFile = originalResultsPath
-		scanErrorsFile = originalErrorsPath
+		ScanResultsFile = originalResultsPath
+		ScanErrorsFile = originalErrorsPath
 	})
 
-	if err := saveFailedScanResult(time.Now()); err != nil {
-		t.Fatalf("saveFailedScanResult() error = %v", err)
+	if err := SaveFailedScanResult(time.Now()); err != nil {
+		t.Fatalf("SaveFailedScanResult() error = %v", err)
 	}
 	var output bytes.Buffer
-	if err := writeError(&output, "command_failed", fmt.Errorf("network unreachable"), false); err != nil {
-		t.Fatalf("writeError() error = %v", err)
+	if err := WriteError(&output, "command_failed", fmt.Errorf("network unreachable"), false); err != nil {
+		t.Fatalf("WriteError() error = %v", err)
 	}
 
 	results := readjsonRecords(t, resultsPath)
@@ -402,18 +402,18 @@ func TestFailedScanLogsOneErrorEvent(t *testing.T) {
 
 func TestWriteErrorJSONModeRemainsMachineReadable(t *testing.T) {
 	dir := t.TempDir()
-	originalResultsPath := scanResultsFile
-	originalErrorsPath := scanErrorsFile
-	scanResultsFile = filepath.Join(dir, "scan-results.jsonl")
-	scanErrorsFile = filepath.Join(dir, "scan-errors.jsonl")
+	originalResultsPath := ScanResultsFile
+	originalErrorsPath := ScanErrorsFile
+	ScanResultsFile = filepath.Join(dir, "scan-results.jsonl")
+	ScanErrorsFile = filepath.Join(dir, "scan-errors.jsonl")
 	t.Cleanup(func() {
-		scanResultsFile = originalResultsPath
-		scanErrorsFile = originalErrorsPath
+		ScanResultsFile = originalResultsPath
+		ScanErrorsFile = originalErrorsPath
 	})
 
 	var output bytes.Buffer
-	if err := writeError(&output, "command_failed", fmt.Errorf("lookup example.com: i/o timeout"), true); err != nil {
-		t.Fatalf("writeError() error = %v", err)
+	if err := WriteError(&output, "command_failed", fmt.Errorf("lookup example.com: i/o timeout"), true); err != nil {
+		t.Fatalf("WriteError() error = %v", err)
 	}
 	var payload struct {
 		Error struct {
@@ -435,19 +435,19 @@ func TestWriteErrorSurfacesjsonFailure(t *testing.T) {
 	if err := os.Mkdir(path, 0700); err != nil {
 		t.Fatal(err)
 	}
-	originalResultsPath := scanResultsFile
-	originalErrorsPath := scanErrorsFile
-	scanResultsFile = filepath.Join(t.TempDir(), "scan-results.jsonl")
-	scanErrorsFile = path
+	originalResultsPath := ScanResultsFile
+	originalErrorsPath := ScanErrorsFile
+	ScanResultsFile = filepath.Join(t.TempDir(), "scan-results.jsonl")
+	ScanErrorsFile = path
 	t.Cleanup(func() {
-		scanResultsFile = originalResultsPath
-		scanErrorsFile = originalErrorsPath
+		ScanResultsFile = originalResultsPath
+		ScanErrorsFile = originalErrorsPath
 	})
 
 	var output bytes.Buffer
-	err := writeError(&output, "command_failed", fmt.Errorf("unexpected failure"), false)
+	err := WriteError(&output, "command_failed", fmt.Errorf("unexpected failure"), false)
 	if err == nil {
-		t.Fatal("writeError() error = nil, want json write failure")
+		t.Fatal("WriteError() error = nil, want json write failure")
 	}
 	if !strings.Contains(output.String(), "Some checks could not be completed.") {
 		t.Errorf("friendly error not displayed before logging failure: %s", output.String())

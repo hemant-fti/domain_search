@@ -1,4 +1,4 @@
-package main
+package cli
 
 import (
 	"context"
@@ -9,9 +9,10 @@ import (
 
 	"github.com/spf13/cobra"
 
+	cmdoutput "domain-search/cmd/output"
 	"domain-search/internal/discovery"
+	ssh "domain-search/internal/executor"
 	"domain-search/internal/inspectors/system"
-	ssh "domain-search/internal/os"
 	"domain-search/internal/server"
 )
 
@@ -20,7 +21,7 @@ type systemCommandResult struct {
 	Warnings []string `json:"warnings,omitempty"`
 }
 
-func newSystemInfoCommand() *cobra.Command {
+func NewSystemInfoCommand() *cobra.Command {
 	var all, details bool
 	cmd := newResultCommand("info", "Show system identity and resource information", func(ctx context.Context, _ *cobra.Command) (commandResult, error) {
 		info, warnings, err := discovery.NewLocalService().CollectSystem(ctx, ssh.NewLocalExecutor())
@@ -31,13 +32,13 @@ func newSystemInfoCommand() *cobra.Command {
 			"Hostname: %s\nOperating system: %s %s\nArchitecture: %s\nKernel: %s\nCPU: %s (%d cores, %d threads)\nMemory: %.2f GiB total, %.2f GiB available\nRoot disk: %.2f GiB total, %.2f GiB free\nUptime: %s\nIPv4: %s\nIPv6: %s",
 			info.Hostname, info.ServerOS, info.OSVersion, info.Architecture, info.Kernel,
 			info.CPUModel, info.Cores, info.Threads, info.Memory.TotalGB, info.Memory.AvailableGB,
-			info.Disk.TotalGB, info.Disk.FreeGB, formatUptime(info.Uptime),
-			displayList(info.IPv4), displayList(info.IPv6),
+			info.Disk.TotalGB, info.Disk.FreeGB, cmdoutput.FormatUptime(info.Uptime),
+			cmdoutput.DisplayList(info.IPv4), cmdoutput.DisplayList(info.IPv6),
 		)
 		if all || details {
 			human += fmt.Sprintf(
 				"\nMAC address: %s\nCurrent user: %s\nTime zone: %s\nDisk used: %.2f GiB\nMemory free: %.2f GiB",
-				displayValue(info.MAC), displayValue(info.CurrentUser), displayValue(info.Timezone),
+				cmdoutput.DisplayValue(info.MAC), cmdoutput.DisplayValue(info.CurrentUser), cmdoutput.DisplayValue(info.Timezone),
 				info.Disk.UsedGB, info.Memory.FreeGB,
 			)
 		}
@@ -48,7 +49,7 @@ func newSystemInfoCommand() *cobra.Command {
 	return cmd
 }
 
-func newSystemCPUCommand() *cobra.Command {
+func NewSystemCPUCommand() *cobra.Command {
 	return newResultCommand("cpu", "Show CPU model and core counts", func(ctx context.Context, _ *cobra.Command) (commandResult, error) {
 		info, err := system.CollectCPUInfo(ctx)
 		if err != nil {
@@ -59,7 +60,7 @@ func newSystemCPUCommand() *cobra.Command {
 	})
 }
 
-func newSystemMemoryCommand() *cobra.Command {
+func NewSystemMemoryCommand() *cobra.Command {
 	return newResultCommand("memory", "Show memory usage", func(ctx context.Context, _ *cobra.Command) (commandResult, error) {
 		info, err := system.CollectMemoryInfo(ctx)
 		if err != nil {
@@ -71,7 +72,7 @@ func newSystemMemoryCommand() *cobra.Command {
 	})
 }
 
-func newSystemDiskCommand() *cobra.Command {
+func NewSystemDiskCommand() *cobra.Command {
 	var path string
 	cmd := newResultCommand("disk", "Show disk usage for a path", func(ctx context.Context, _ *cobra.Command) (commandResult, error) {
 		if strings.TrimSpace(path) == "" {
@@ -99,18 +100,18 @@ func newSystemDiskCommand() *cobra.Command {
 	return cmd
 }
 
-func newSystemNetworkCommand() *cobra.Command {
+func NewSystemNetworkCommand() *cobra.Command {
 	return newResultCommand("network", "Show local network addresses", func(ctx context.Context, _ *cobra.Command) (commandResult, error) {
 		info, err := system.CollectNetworkInfo(ctx)
 		if err != nil {
 			return commandResult{}, err
 		}
 		return textResult(info,
-			fmt.Sprintf("IPv4: %s\nIPv6: %s\nMAC: %s", displayList(info.IPv4), displayList(info.IPv6), displayValue(info.MAC))), nil
+			fmt.Sprintf("IPv4: %s\nIPv6: %s\nMAC: %s", cmdoutput.DisplayList(info.IPv4), cmdoutput.DisplayList(info.IPv6), cmdoutput.DisplayValue(info.MAC))), nil
 	})
 }
 
-func newSystemUptimeCommand() *cobra.Command {
+func NewSystemUptimeCommand() *cobra.Command {
 	return newResultCommand("uptime", "Show system uptime", func(ctx context.Context, _ *cobra.Command) (commandResult, error) {
 		uptime, err := system.CollectUptime(ctx)
 		if err != nil {
@@ -119,7 +120,7 @@ func newSystemUptimeCommand() *cobra.Command {
 		value := struct {
 			Seconds uint64 `json:"seconds"`
 			Display string `json:"display"`
-		}{uptime, formatUptime(uptime)}
+		}{uptime, cmdoutput.FormatUptime(uptime)}
 		return textResult(value, "Uptime: "+value.Display), nil
 	})
 }

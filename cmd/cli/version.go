@@ -1,4 +1,4 @@
-package main
+package cli
 
 import (
 	"fmt"
@@ -8,7 +8,7 @@ import (
 
 const version = "1.1.0"
 
-func newVersionCommand() *cobra.Command {
+func NewVersionCommand() *cobra.Command {
 	return &cobra.Command{
 		Use:   "version",
 		Short: "Display DomainScout version",

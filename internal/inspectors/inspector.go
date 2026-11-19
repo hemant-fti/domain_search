@@ -2,7 +2,7 @@ package inspectors
 
 import (
 	"context"
-	ssh "domain-search/internal/os"
+	ssh "domain-search/internal/executor"
 )
 
 type Domain struct {
