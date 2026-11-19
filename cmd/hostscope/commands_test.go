@@ -57,7 +57,7 @@ func TestResultCommandCompactJSON(t *testing.T) {
 }
 
 func TestResultCommandWritesSelectedOutputFile(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "result.json")
+	path := filepath.Join(t.TempDir(), "result.jsonl")
 	cmd := newResultCommand("result", "test result", func(context.Context, *cobra.Command) (commandResult, error) {
 		return textResult(map[string]string{"value": "ok"}, "human output"), nil
 	})
@@ -85,7 +85,7 @@ func TestResultCommandWritesSelectedOutputFile(t *testing.T) {
 }
 
 func TestScanOutputCannotOverwriteHistory(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "scan-results.json")
+	path := filepath.Join(t.TempDir(), "scan-results.jsonl")
 	original := scanResultsFile
 	scanResultsFile = path
 	t.Cleanup(func() { scanResultsFile = original })

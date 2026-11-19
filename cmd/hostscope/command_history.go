@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
@@ -13,9 +15,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
+const logDirectory = "logs"
+
 var (
-	commandResultsFile = "command-results.json"
-	commandErrorsFile  = "command-errors.json"
+	commandResultsFile = filepath.Join(logDirectory, "command-results.jsonl")
+	commandErrorsFile  = filepath.Join(logDirectory, "command-errors.jsonl")
 
 	commandLogMu sync.Mutex
 
@@ -25,6 +29,14 @@ var (
 		`(?s)-----BEGIN [A-Z ]*PRIVATE KEY-----.*?-----END [A-Z ]*PRIVATE KEY-----`,
 	)
 )
+
+func ensureLogDirectory() error {
+	if err := os.MkdirAll(logDirectory, 0755); err != nil {
+		return fmt.Errorf("create logs directory: %w", err)
+	}
+
+	return nil
+}
 
 type commandOutputCaptureKey struct{}
 
@@ -96,6 +108,9 @@ func sanitizeCommandOutput(value string) string {
 }
 
 func appendCommandJSON(path string, record any) error {
+	if err := ensureLogDirectory(); err != nil {
+		return err
+	}
 	data, err := json.Marshal(record)
 	if err != nil {
 		return err

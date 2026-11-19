@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"text/tabwriter"
@@ -21,8 +22,8 @@ const (
 )
 
 var (
-	scanResultsFile = "scan-results.json"
-	scanErrorsFile  = "scan-errors.json"
+	scanResultsFile = filepath.Join(logDirectory, "scan-results.jsonl")
+	scanErrorsFile  = filepath.Join(logDirectory, "scan-errors.jsonl")
 )
 
 func writeJSONTo(output io.Writer, result any, pretty bool) error {
@@ -59,6 +60,9 @@ func marshalJSON(result any, pretty bool) ([]byte, error) {
 }
 
 func appendJSONResult(path string, result []byte) (returnErr error) {
+	if err := ensureLogDirectory(); err != nil {
+		return err
+	}
 	result = bytes.TrimSpace(result)
 	if !json.Valid(result) || len(result) == 0 || result[0] != '{' {
 		return fmt.Errorf("append json result: record must be a valid JSON object")

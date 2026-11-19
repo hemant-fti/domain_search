@@ -21,8 +21,8 @@ func TestWriteHumanIncludesDiscoveryFields(t *testing.T) {
 	dir := t.TempDir()
 	originalResultsPath := scanResultsFile
 	originalErrorsPath := scanErrorsFile
-	scanResultsFile = filepath.Join(t.TempDir(), "scan-results.json")
-	scanErrorsFile = filepath.Join(dir, "scan-errors.json")
+	scanResultsFile = filepath.Join(t.TempDir(), "scan-results.jsonl")
+	scanErrorsFile = filepath.Join(dir, "scan-errors.jsonl")
 	t.Cleanup(func() {
 		scanResultsFile = originalResultsPath
 		scanErrorsFile = originalErrorsPath
@@ -196,7 +196,7 @@ func TestDomainJSONKeepsPortsAsArrayAndDNSData(t *testing.T) {
 }
 
 func TestAppendJSONResultPreservesPriorScans(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "scan-results.json")
+	path := filepath.Join(t.TempDir(), "scan-results.jsonl")
 
 	first := map[string]string{"scan": "first"}
 	second := map[string]string{"scan": "second"}
@@ -219,7 +219,7 @@ func TestAppendJSONResultPreservesPriorScans(t *testing.T) {
 }
 
 func TestAppendJSONResultDoesNotOverwriteInvalidExistingFile(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "scan-results.json")
+	path := filepath.Join(t.TempDir(), "scan-results.jsonl")
 	original := []byte("{invalid")
 	if err := os.WriteFile(path, original, 0600); err != nil {
 		t.Fatalf("os.WriteFile() error = %v", err)
@@ -241,8 +241,8 @@ func TestAppendJSONResultDoesNotOverwriteInvalidExistingFile(t *testing.T) {
 
 func TestSaveScanResultSeparatesScanAndWarningEvents(t *testing.T) {
 	dir := t.TempDir()
-	resultsPath := filepath.Join(dir, "scan-results.json")
-	errorsPath := filepath.Join(dir, "scan-errors.json")
+	resultsPath := filepath.Join(dir, "scan-results.jsonl")
+	errorsPath := filepath.Join(dir, "scan-errors.jsonl")
 	originalResultsPath := scanResultsFile
 	originalErrorsPath := scanErrorsFile
 	scanResultsFile = resultsPath
@@ -299,7 +299,7 @@ func TestSaveScanResultSeparatesScanAndWarningEvents(t *testing.T) {
 }
 
 func TestSaveScanResultAppendsMultipleSuccessfulScans(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "scan-results.json")
+	path := filepath.Join(t.TempDir(), "scan-results.jsonl")
 	originalPath := scanResultsFile
 	scanResultsFile = path
 	t.Cleanup(func() { scanResultsFile = originalPath })
@@ -322,8 +322,8 @@ func TestSaveScanResultAppendsMultipleSuccessfulScans(t *testing.T) {
 
 func TestWriteErrorLogsStructuredErrorWithoutExposingDetails(t *testing.T) {
 	dir := t.TempDir()
-	resultsPath := filepath.Join(dir, "scan-results.json")
-	errorsPath := filepath.Join(dir, "scan-errors.json")
+	resultsPath := filepath.Join(dir, "scan-results.jsonl")
+	errorsPath := filepath.Join(dir, "scan-errors.jsonl")
 	originalResultsPath := scanResultsFile
 	originalErrorsPath := scanErrorsFile
 	scanResultsFile = resultsPath
@@ -357,7 +357,7 @@ func TestWriteErrorLogsStructuredErrorWithoutExposingDetails(t *testing.T) {
 }
 
 func TestSaveFailedScanResultAppendsFailureRecord(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "scan-results.json")
+	path := filepath.Join(t.TempDir(), "scan-results.jsonl")
 	timestamp := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
 	if err := saveFailedScanResultTo(path, timestamp); err != nil {
 		t.Fatalf("saveFailedScanResultTo() error = %v", err)
@@ -371,8 +371,8 @@ func TestSaveFailedScanResultAppendsFailureRecord(t *testing.T) {
 
 func TestFailedScanLogsOneErrorEvent(t *testing.T) {
 	dir := t.TempDir()
-	resultsPath := filepath.Join(dir, "scan-results.json")
-	errorsPath := filepath.Join(dir, "scan-errors.json")
+	resultsPath := filepath.Join(dir, "scan-results.jsonl")
+	errorsPath := filepath.Join(dir, "scan-errors.jsonl")
 	originalResultsPath := scanResultsFile
 	originalErrorsPath := scanErrorsFile
 	scanResultsFile = resultsPath
@@ -404,8 +404,8 @@ func TestWriteErrorJSONModeRemainsMachineReadable(t *testing.T) {
 	dir := t.TempDir()
 	originalResultsPath := scanResultsFile
 	originalErrorsPath := scanErrorsFile
-	scanResultsFile = filepath.Join(dir, "scan-results.json")
-	scanErrorsFile = filepath.Join(dir, "scan-errors.json")
+	scanResultsFile = filepath.Join(dir, "scan-results.jsonl")
+	scanErrorsFile = filepath.Join(dir, "scan-errors.jsonl")
 	t.Cleanup(func() {
 		scanResultsFile = originalResultsPath
 		scanErrorsFile = originalErrorsPath
@@ -437,7 +437,7 @@ func TestWriteErrorSurfacesjsonFailure(t *testing.T) {
 	}
 	originalResultsPath := scanResultsFile
 	originalErrorsPath := scanErrorsFile
-	scanResultsFile = filepath.Join(t.TempDir(), "scan-results.json")
+	scanResultsFile = filepath.Join(t.TempDir(), "scan-results.jsonl")
 	scanErrorsFile = path
 	t.Cleanup(func() {
 		scanResultsFile = originalResultsPath

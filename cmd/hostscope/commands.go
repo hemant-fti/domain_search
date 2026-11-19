@@ -10,7 +10,7 @@ import (
 )
 
 type commandOutputOptions struct {
-	json    bool
+	jsonl   bool
 	pretty  bool
 	compact bool
 	timeout time.Duration
@@ -47,7 +47,7 @@ func newResultCommand(use, short string, run func(context.Context, *cobra.Comman
 				return err
 			}
 
-			useJSON := options.json || options.compact || cmd.Flags().Changed("pretty")
+			useJSON := options.jsonl || options.compact || cmd.Flags().Changed("pretty")
 			if useJSON {
 				data, err := marshalJSON(result.value, options.pretty)
 				if err != nil {
@@ -72,7 +72,7 @@ func newResultCommand(use, short string, run func(context.Context, *cobra.Comman
 		},
 	}
 
-	cmd.Flags().BoolVar(&options.json, "json", false, "emit JSON output")
+	cmd.Flags().BoolVar(&options.jsonl, "json", false, "emit JSON output")
 	cmd.Flags().BoolVar(&options.pretty, "pretty", true, "indent JSON output (implies --json)")
 	cmd.Flags().BoolVar(&options.compact, "compact", false, "emit compact JSON output")
 	cmd.Flags().DurationVar(&options.timeout, "timeout", defaultTimeout, "maximum command duration")

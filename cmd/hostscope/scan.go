@@ -37,7 +37,7 @@ func newScanCommand() *cobra.Command {
   domain-search scan --json
   domain-search scan --compact
   domain-search scan --timeout 5m
-  sudo domain-search scan --json > result.json`,
+  sudo domain-search scan --json > result.jsonl`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if timeout <= 0 {
