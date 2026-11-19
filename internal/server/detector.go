@@ -13,6 +13,8 @@ func NewDetector() *Detector {
 	return &Detector{}
 }
 
+
+
 func (d *Detector) Detect(ctx context.Context) (Info, error) {
 	var out Info
 
