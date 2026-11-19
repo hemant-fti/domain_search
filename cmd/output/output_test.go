@@ -206,8 +206,8 @@ func TestAppendJSONResultPreservesPriorScans(t *testing.T) {
 		if err != nil {
 			t.Fatalf("json.Marshal() error = %v", err)
 		}
-		if err := appendJSONResult(path, data); err != nil {
-			t.Fatalf("appendJSONResult() error = %v", err)
+		if err := appendJSONLines(path, data); err != nil {
+			t.Fatalf("appendJSONLines() error = %v", err)
 		}
 	}
 
@@ -225,9 +225,9 @@ func TestAppendJSONResultDoesNotOverwriteInvalidExistingFile(t *testing.T) {
 		t.Fatalf("os.WriteFile() error = %v", err)
 	}
 
-	err := appendJSONResult(path, []byte(`{"scan":"new"}`))
+	err := appendJSONLines(path, []byte(`{"scan":"new"}`))
 	if err == nil {
-		t.Fatal("appendJSONResult() error = nil, want invalid-file error")
+		t.Fatal("appendJSONLines() error = nil, want invalid-file error")
 	}
 
 	data, readErr := os.ReadFile(path)
@@ -359,8 +359,8 @@ func TestWriteErrorLogsStructuredErrorWithoutExposingDetails(t *testing.T) {
 func TestSaveFailedScanResultAppendsFailureRecord(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "scan-results.jsonl")
 	timestamp := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
-	if err := SaveFailedScanResultTo(path, timestamp); err != nil {
-		t.Fatalf("SaveFailedScanResultTo() error = %v", err)
+	if err := SaveFailedScanResult(path, timestamp); err != nil {
+		t.Fatalf("SaveFailedScanResult() error = %v", err)
 	}
 
 	records := readjsonRecords(t, path)
@@ -382,7 +382,7 @@ func TestFailedScanLogsOneErrorEvent(t *testing.T) {
 		ScanErrorsFile = originalErrorsPath
 	})
 
-	if err := SaveFailedScanResult(time.Now()); err != nil {
+	if err := SaveFailedScanResult(resultsPath, time.Now()); err != nil {
 		t.Fatalf("SaveFailedScanResult() error = %v", err)
 	}
 	var output bytes.Buffer

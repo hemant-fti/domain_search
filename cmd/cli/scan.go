@@ -70,7 +70,7 @@ func RunDiscovery(cmd *cobra.Command, ctx context.Context, outputPath string, us
 
 	result, err := service.Discover(ctx)
 	if err != nil {
-		if recordErr := cmdoutput.SaveFailedScanResult(result.ScannedAt); recordErr != nil {
+		if recordErr := cmdoutput.SaveFailedScanResult(outputPath, result.ScannedAt); recordErr != nil {
 			return fmt.Errorf(
 				"discovery failed: %w (failed to record unsuccessful scan: %v)",
 				err,
