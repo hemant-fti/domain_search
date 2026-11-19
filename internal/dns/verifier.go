@@ -21,11 +21,7 @@ type Result struct {
 	Status        string   `json:"status"`
 }
 
-func (v *Verifier) Verify(
-	ctx context.Context,
-	domain string,
-	serverIP string,
-) Result {
+func (v *Verifier) Verify(ctx context.Context, domain string, serverIP string) Result {
 	ips, err := v.resolver.LookupIP(ctx, domain)
 
 	if err != nil {

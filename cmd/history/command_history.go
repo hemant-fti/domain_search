@@ -173,14 +173,7 @@ func appendCommandJSON(path string, record any) error {
 	return nil
 }
 
-func RecordCommandExecution(
-	cmd *cobra.Command,
-	args []string,
-	startedAt time.Time,
-	stdout string,
-	fileOutput string,
-	executionErr error,
-) {
+func RecordCommandExecution(cmd *cobra.Command, args []string, startedAt time.Time, stdout string, fileOutput string, executionErr error) {
 	commandName := "hostscope"
 
 	if cmd != nil {
@@ -250,12 +243,7 @@ func RecordCommandExecution(
 	}
 }
 
-func RecordScanError(
-	code string,
-	message string,
-	component string,
-	err error,
-) error {
+func RecordScanError(code string, message string, component string, err error) error {
 	details := ""
 
 	if err != nil {

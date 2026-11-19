@@ -313,9 +313,7 @@ func runFirstCommand(ctx context.Context, commands []commandSpec) (string, error
 	return "", lastErr
 }
 
-func (s *Service) Discover(
-	ctx context.Context,
-) (Result, error) {
+func (s *Service) Discover(ctx context.Context) (Result, error) {
 	startedAt := time.Now()
 
 	logger.Debug("Discovery lifecycle started")
