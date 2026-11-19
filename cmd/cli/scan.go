@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -15,6 +14,7 @@ import (
 	cmdoutput "domain-search/cmd/output"
 	"domain-search/internal/discovery"
 	ssh "domain-search/internal/executor"
+	"domain-search/pkg/logger"
 
 	"github.com/spf13/cobra"
 )
@@ -67,6 +67,7 @@ func NewScanCommand() *cobra.Command {
 
 func RunDiscovery(cmd *cobra.Command, ctx context.Context, outputPath string, useJSON, pretty bool) error {
 	service := discovery.NewLocalService()
+	startedAt := time.Now()
 
 	result, err := service.Discover(ctx, ssh.NewLocalExecutor())
 	if err != nil {
@@ -77,6 +78,7 @@ func RunDiscovery(cmd *cobra.Command, ctx context.Context, outputPath string, us
 				recordErr,
 			)
 		}
+
 		return fmt.Errorf("discovery failed: %w", err)
 	}
 
@@ -84,26 +86,41 @@ func RunDiscovery(cmd *cobra.Command, ctx context.Context, outputPath string, us
 		return fmt.Errorf("write discovery result: %w", err)
 	}
 
+	logger.Info("Scan completed",
+		"duration", time.Since(startedAt).String(),
+	)
+
 	return nil
 }
 
-func writeScanOutput(cmd *cobra.Command, path string, result discovery.Result, useJSON, pretty bool) (returnErr error) {
+func writeScanOutput(
+	cmd *cobra.Command,
+	path string,
+	result discovery.Result,
+	useJSON, pretty bool,
+) (returnErr error) {
 	var output io.Writer = cmd.OutOrStdout()
 	var file *os.File
+
 	if path != "" {
 		if err := ValidateScanOutputPath(path); err != nil {
 			return err
 		}
+
 		var err error
 		file, err = os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0600)
 		if err != nil {
 			return fmt.Errorf("open output file %s: %w", path, err)
 		}
-		var captured bytes.Buffer
-		output = io.MultiWriter(file, &captured)
+
+		output = file
+
 		defer func() {
 			if err := file.Close(); err != nil {
-				returnErr = errors.Join(returnErr, fmt.Errorf("close output file: %w", err))
+				returnErr = errors.Join(
+					returnErr,
+					fmt.Errorf("close output file: %w", err),
+				)
 			}
 		}()
 	}
@@ -111,6 +128,7 @@ func writeScanOutput(cmd *cobra.Command, path string, result discovery.Result, u
 	if useJSON {
 		return cmdoutput.WriteJSONTo(output, result, pretty)
 	}
+
 	return cmdoutput.WriteHuman(output, result)
 }
 
@@ -119,18 +137,32 @@ func ValidateScanOutputPath(path string) error {
 	if err != nil {
 		return fmt.Errorf("resolve output file path: %w", err)
 	}
-	for _, historyPath := range []string{cmdoutput.ScanResultsFile, cmdoutput.ScanErrorsFile} {
+
+	for _, historyPath := range []string{
+		cmdoutput.ScanResultsFile,
+		cmdoutput.ScanErrorsFile,
+	} {
 		resolvedHistoryPath, err := filepath.Abs(historyPath)
 		if err != nil {
 			return fmt.Errorf("resolve scan history path: %w", err)
 		}
+
 		matches := filepath.Clean(outputPath) == filepath.Clean(resolvedHistoryPath)
+
 		if runtime.GOOS == "windows" {
-			matches = strings.EqualFold(filepath.Clean(outputPath), filepath.Clean(resolvedHistoryPath))
+			matches = strings.EqualFold(
+				filepath.Clean(outputPath),
+				filepath.Clean(resolvedHistoryPath),
+			)
 		}
+
 		if matches {
-			return fmt.Errorf("output file cannot be the scan history file %s", historyPath)
+			return fmt.Errorf(
+				"output file cannot be the scan history file %s",
+				historyPath,
+			)
 		}
 	}
+
 	return nil
 }

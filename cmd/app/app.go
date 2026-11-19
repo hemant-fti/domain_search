@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"domain-search/pkg/logger"
 	"os"
 	"os/signal"
 	"syscall"
@@ -14,6 +15,7 @@ func RunApplication() error {
 		syscall.SIGTERM,
 	)
 	defer stop()
+	logger.Info("Initializing application")
 
 	return executeApplication(ctx)
 }

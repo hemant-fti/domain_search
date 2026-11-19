@@ -1,9 +1,10 @@
 package rootcli
 
-import ("github.com/spf13/cobra"
-        "domain-search/cmd/cli"
-)
+import (
+	"domain-search/cmd/cli"
 
+	"github.com/spf13/cobra"
+)
 
 func NewRootCommand() *cobra.Command {
 	cmd := &cobra.Command{

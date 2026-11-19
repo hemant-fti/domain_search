@@ -1,6 +1,9 @@
 package dns
 
-import "context"
+import (
+	"context"
+	"domain-search/pkg/logger"
+)
 
 type Verifier struct {
 	resolver *Resolver
@@ -20,20 +23,25 @@ func (v *Verifier) Verify(
 	ips, err := v.resolver.LookupIP(ctx, domain)
 
 	if err != nil {
-		status := "unresolved"
-
-		if ctx.Err() != nil {
-			status = "unresolved"
-		}
+		logger.Warn(
+			"DNS lookup failed",
+			"domain", domain,
+			"error", err,
+		)
 
 		return Result{
 			ResolvedIPs:   []string{},
 			MatchesServer: false,
-			Status:        status,
+			Status:        "unresolved",
 		}
 	}
 
 	if len(ips) == 0 {
+		logger.Warn(
+			"No IP addresses resolved",
+			"domain", domain,
+		)
+
 		return Result{
 			ResolvedIPs:   []string{},
 			MatchesServer: false,
@@ -48,6 +56,15 @@ func (v *Verifier) Verify(
 	if matches {
 		status = "matches_server"
 	}
+
+	logger.Info(
+		"DNS verification completed",
+		"domain", domain,
+		"server_ip", serverIP,
+		"resolved_ips", ips,
+		"matches_server", matches,
+		"status", status,
+	)
 
 	return Result{
 		ResolvedIPs:   ips,

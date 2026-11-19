@@ -6,6 +6,7 @@ import (
 	"domain-search/cmd/apperr"
 	"domain-search/cmd/cli/rootcli"
 	"domain-search/cmd/history"
+	"domain-search/pkg/logger"
 	"io"
 	"os"
 	"time"
@@ -29,7 +30,11 @@ func executeApplication(ctx context.Context) error {
 
 	startedAt := time.Now()
 
+	logger.Info("Command execution started")
+
 	executedCommand, err := command.ExecuteC()
+
+	duration := time.Since(startedAt)
 
 	if executedCommand == nil {
 		executedCommand = command
@@ -45,8 +50,18 @@ func executeApplication(ctx context.Context) error {
 	)
 
 	if err != nil {
+		logger.Error(err, "Command execution failed",
+			"command", executedCommand.CommandPath(),
+			"duration", duration.String(),
+		)
+
 		return apperr.HandleCommandError(err)
 	}
+
+	logger.Info("Command execution completed",
+		"command", executedCommand.CommandPath(),
+		"duration", duration.String(),
+	)
 
 	return nil
 }

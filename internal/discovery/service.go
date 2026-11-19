@@ -14,6 +14,7 @@ import (
 	"domain-search/internal/inspectors/nginx"
 	"domain-search/internal/inspectors/system"
 	"domain-search/internal/server"
+	"domain-search/pkg/logger"
 )
 
 type Service struct {
@@ -51,14 +52,33 @@ func EnsureLinux(operation string) error {
 }
 
 func (s *Service) CollectSystem(ctx context.Context, _ osExec.Executor) (server.SystemInfo, []string, error) {
+	startedAt := time.Now()
+
+	logger.Debug("Collecting system information")
+
 	info, warnings, err := system.CollectSystemInfo(ctx)
 	if err != nil {
+		logger.Debug("System information collection failed",
+			"error", err,
+			"duration", time.Since(startedAt).String(),
+		)
 		return info, warnings, fmt.Errorf("collect system information: %w", err)
 	}
+
+	logger.Debug("System information collection completed",
+		"hostname", info.Hostname,
+		"warnings", len(warnings),
+		"duration", time.Since(startedAt).String(),
+	)
+
 	return info, warnings, nil
 }
 
 func (s *Service) Inspect(ctx context.Context, ex osExec.Executor, name string, options InspectOptions) (Inspection, error) {
+	startedAt := time.Now()
+
+	logger.Debug("Web server inspection started", "server", name)
+
 	if err := EnsureLinux("web server inspection"); err != nil {
 		return Inspection{}, err
 	}
@@ -70,41 +90,71 @@ func (s *Service) Inspect(ctx context.Context, ex osExec.Executor, name string, 
 	}
 
 	var inspector inspectors.Inspector
+
 	for _, candidate := range s.inspectors {
 		if candidate.Name() == name {
 			inspector = candidate
 			break
 		}
 	}
+
 	if inspector == nil {
 		return result, fmt.Errorf("unsupported web server %q", name)
 	}
 
 	detected, err := inspector.Detect(ctx, ex)
 	if err != nil {
+		logger.Debug("Web server detection failed",
+			"server", name,
+			"error", err,
+		)
 		return result, fmt.Errorf("detect %s: %w", name, err)
 	}
+
 	result.Detected = detected
+
 	if !detected {
+		logger.Debug("Web server not detected",
+			"server", name,
+			"duration", time.Since(startedAt).String(),
+		)
 		return result, nil
 	}
+
+	logger.Debug("Web server detected", "server", name)
 
 	if status, ok := inspector.(statusInspector); ok {
 		running, err := status.Running(ctx, ex)
 		if err != nil {
+			logger.Debug("Web server status inspection failed",
+				"server", name,
+				"error", err,
+			)
 			return result, fmt.Errorf("check %s status: %w", name, err)
 		}
+
 		result.Running = running
 	}
 
 	if options.Domains || options.Config {
+		logger.Debug("Discovering web server configuration",
+			"server", name,
+		)
+
 		domains, err := inspector.Discover(ctx, ex)
 		if err != nil {
+			logger.Debug("Web server configuration discovery failed",
+				"server", name,
+				"error", err,
+			)
 			return result, fmt.Errorf("discover %s configuration: %w", name, err)
 		}
+
 		result.Domains = domains
+
 		if options.Config {
 			seen := make(map[string]bool)
+
 			for _, domain := range domains {
 				if domain.ConfigPath != "" && !seen[domain.ConfigPath] {
 					seen[domain.ConfigPath] = true
@@ -116,64 +166,118 @@ func (s *Service) Inspect(ctx context.Context, ex osExec.Executor, name string, 
 
 	if options.Version {
 		command := name + " -v 2>&1"
+
 		if name == "apache" {
 			command = "apachectl -v 2>&1"
 		}
+
 		commands := []string{command}
+
 		if name == "apache" {
 			commands = append(commands, "httpd -v 2>&1")
 		}
+
 		output, err := runFirstCommand(ctx, ex, commands)
 		if err != nil {
 			return result, fmt.Errorf("read %s version: %w", name, err)
 		}
+
 		result.Version = strings.TrimSpace(output)
 	}
+
+	logger.Debug("Web server inspection completed",
+		"server", name,
+		"detected", result.Detected,
+		"running", result.Running,
+		"domains", len(result.Domains),
+		"duration", time.Since(startedAt).String(),
+	)
 
 	return result, nil
 }
 
 func (s *Service) DiscoverDomains(ctx context.Context, ex osExec.Executor, names []string) ([]inspectors.Domain, error) {
+	startedAt := time.Now()
+
+	logger.Debug("Domain discovery started", "servers", names)
+
 	var domains []inspectors.Domain
+
 	for _, name := range names {
-		result, err := s.Inspect(ctx, ex, name, InspectOptions{Domains: true})
+		result, err := s.Inspect(ctx, ex, name, InspectOptions{
+			Domains: true,
+		})
 		if err != nil {
 			return nil, err
 		}
+
 		if result.Detected {
 			domains = append(domains, result.Domains...)
 		}
 	}
+
+	logger.Debug("Domain discovery completed",
+		"domains", len(domains),
+		"duration", time.Since(startedAt).String(),
+	)
+
 	return domains, nil
 }
 
 func (s *Service) TestConfig(ctx context.Context, ex osExec.Executor, name string) (string, error) {
+	startedAt := time.Now()
+
+	logger.Debug("Web server configuration test started",
+		"server", name,
+	)
+
 	if err := EnsureLinux("web server configuration inspection"); err != nil {
 		return "", err
 	}
+
 	commands := []string{"nginx -t 2>&1"}
+
 	if name == "apache" {
-		commands = []string{"apachectl configtest 2>&1", "httpd -t 2>&1"}
+		commands = []string{
+			"apachectl configtest 2>&1",
+			"httpd -t 2>&1",
+		}
 	}
+
 	output, err := runFirstCommand(ctx, ex, commands)
 	if err != nil {
+		logger.Debug("Web server configuration test failed",
+			"server", name,
+			"error", err,
+		)
 		return "", fmt.Errorf("test %s configuration: %w", name, err)
 	}
+
+	logger.Debug("Web server configuration test completed",
+		"server", name,
+		"duration", time.Since(startedAt).String(),
+	)
+
 	return strings.TrimSpace(output), nil
 }
 
 func runFirstCommand(ctx context.Context, ex osExec.Executor, commands []string) (string, error) {
 	var lastErr error
+
 	for _, command := range commands {
 		output, err := ex.Run(ctx, command)
+
 		if err == nil {
 			return output, nil
 		}
+
 		if ctx.Err() != nil {
 			return "", ctx.Err()
 		}
+
 		lastErr = err
 	}
+
 	return "", lastErr
 }
 
@@ -181,11 +285,15 @@ func (s *Service) Discover(
 	ctx context.Context,
 	ex osExec.Executor,
 ) (Result, error) {
+	startedAt := time.Now()
+
+	logger.Debug("Discovery lifecycle started")
 
 	result := newResult()
 
 	info, err := s.serverService.GetInfo(ctx, ex)
 	if err != nil {
+		logger.Debug("Server information discovery failed", "error", err)
 		return result, err
 	}
 
@@ -196,10 +304,16 @@ func (s *Service) Discover(
 	systemInfo, warnings, collectErr := system.CollectSystemInfo(ctx)
 	result.System = systemInfo
 	appendWarnings(&result, warnings)
+
 	if collectErr != nil {
 		if ctx.Err() != nil {
 			return result, ctx.Err()
 		}
+
+		logger.Debug("System information collection produced an error",
+			"error", collectErr,
+		)
+
 		appendWarnings(&result, []string{
 			"system information: " + collectErr.Error(),
 		})
@@ -210,7 +324,10 @@ func (s *Service) Discover(
 			return result, err
 		}
 
-		// Detect installed service.
+		name := inspector.Name()
+
+		logger.Debug("Detecting installed service", "service", name)
+
 		detected, detectErr := inspector.Detect(ctx, ex)
 
 		if detectErr != nil {
@@ -218,24 +335,31 @@ func (s *Service) Discover(
 				return result, ctx.Err()
 			}
 
+			logger.Debug("Service detection failed",
+				"service", name,
+				"error", detectErr,
+			)
+
 			appendWarnings(&result, []string{
-				inspector.Name() + " detection: " + detectErr.Error(),
+				name + " detection: " + detectErr.Error(),
 			})
 
 			continue
 		}
 
 		if !detected {
+			logger.Debug("Service not detected", "service", name)
 			continue
 		}
 
+		logger.Debug("Service detected", "service", name)
+
 		result.DetectedServices = append(
 			result.DetectedServices,
-			inspector.Name(),
+			name,
 		)
 
-		// System inspector collects information but has no domains.
-		if inspector.Name() == "system" {
+		if name == "system" {
 			continue
 		}
 
@@ -259,14 +383,24 @@ func (s *Service) Discover(
 		return result, err
 	}
 
-	// Merge duplicate domains.
+	logger.Debug("Normalizing discovered domains",
+		"domains_before_normalization", len(found),
+	)
+
 	found = Normalize(found)
 
-	// Verify DNS records.
+	logger.Debug("Domain normalization completed",
+		"unique_domains", len(found),
+	)
+
 	for _, domain := range found {
 		if err := ctx.Err(); err != nil {
 			return result, err
 		}
+
+		logger.Debug("Verifying domain DNS",
+			"domain", domain.Name,
+		)
 
 		domainResult := DomainResult{
 			Domain: domain,
@@ -285,6 +419,13 @@ func (s *Service) Discover(
 	}
 
 	result.TotalDomains = len(result.Domains)
+
+	logger.Debug("Discovery lifecycle completed",
+		"detected_services", len(result.DetectedServices),
+		"domains", result.TotalDomains,
+		"warnings", len(result.Warnings),
+		"duration", time.Since(startedAt).String(),
+	)
 
 	return result, nil
 }

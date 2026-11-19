@@ -12,6 +12,8 @@ import (
 	"sync"
 	"time"
 
+	"domain-search/pkg/logger"
+
 	"github.com/spf13/cobra"
 )
 
@@ -23,12 +25,37 @@ var (
 
 	commandLogMu sync.Mutex
 
-	sensitiveFlag     = regexp.MustCompile(`(?i)(password|passwd|token|secret|api[-_]?key|authorization|credential|private[-_]?key)`)
-	sensitiveText     = regexp.MustCompile(`(?i)(password|passwd|token|secret|api[-_]?key|authorization|credential)\s*[:=]\s*("[^"]*"|'[^']*'|[^\s,;]+)`)
+	loggerMu sync.RWMutex
+	log      logger.Logger
+
+	sensitiveFlag = regexp.MustCompile(`(?i)(password|passwd|token|secret|api[-_]?key|authorization|credential|private[-_]?key)`)
+	sensitiveText = regexp.MustCompile(`(?i)(password|passwd|token|secret|api[-_]?key|authorization|credential)\s*[:=]\s*("[^"]*"|'[^']*'|[^\s,;]+)`)
+
 	privateKeyPattern = regexp.MustCompile(
 		`(?s)-----BEGIN [A-Z ]*PRIVATE KEY-----.*?-----END [A-Z ]*PRIVATE KEY-----`,
 	)
 )
+
+func SetLogger(l logger.Logger) {
+	if l == nil {
+		return
+	}
+
+	loggerMu.Lock()
+	defer loggerMu.Unlock()
+
+	log = l
+}
+
+func logError(err error, msg string, args ...any) {
+	loggerMu.RLock()
+	l := log
+	loggerMu.RUnlock()
+
+	if l != nil {
+		l.Error(err, msg, args...)
+	}
+}
 
 func EnsureLogDirectory() error {
 	if err := os.MkdirAll(LogDirectory, 0755); err != nil {
@@ -51,24 +78,35 @@ type commandHistoryRecord struct {
 }
 
 type commandErrorRecord struct {
-	Command    string    `json:"command"`
+	Command    string    `json:"command,omitempty"`
 	Args       []string  `json:"args,omitempty"`
-	Status     string    `json:"status"`
-	ExecutedAt time.Time `json:"executed_at"`
-	DurationMS int64     `json:"duration_ms"`
-	Error      struct {
+	Status     string    `json:"status,omitempty"`
+	ExecutedAt time.Time `json:"executed_at,omitempty"`
+	DurationMS int64     `json:"duration_ms,omitempty"`
+
+	Type      string `json:"type,omitempty"`
+	Code      string `json:"code,omitempty"`
+	Message   string `json:"message,omitempty"`
+	Details   string `json:"details,omitempty"`
+	Component string `json:"component,omitempty"`
+
+	Error struct {
 		Code    string `json:"code"`
 		Message string `json:"message"`
-	} `json:"error"`
+	} `json:"error,omitempty"`
 }
 
 func CaptureCommandFileOutput(ctx context.Context, data []byte) {
+	if ctx == nil {
+		return
+	}
+
 	buffer, ok := ctx.Value(CommandOutputCaptureKey{}).(*bytes.Buffer)
 	if !ok {
 		return
 	}
 
-	buffer.Write(data)
+	_, _ = buffer.Write(data)
 }
 
 func sanitizeCommandArgs(args []string) []string {
@@ -111,9 +149,10 @@ func appendCommandJSON(path string, record any) error {
 	if err := EnsureLogDirectory(); err != nil {
 		return err
 	}
+
 	data, err := json.Marshal(record)
 	if err != nil {
-		return err
+		return fmt.Errorf("marshal command record to JSON: %w", err)
 	}
 
 	data = append(data, '\n')
@@ -123,12 +162,15 @@ func appendCommandJSON(path string, record any) error {
 
 	file, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
 	if err != nil {
-		return err
+		return fmt.Errorf("open command history file: %w", err)
 	}
 	defer file.Close()
 
-	_, err = file.Write(data)
-	return err
+	if _, err := file.Write(data); err != nil {
+		return fmt.Errorf("write command history: %w", err)
+	}
+
+	return nil
 }
 
 func RecordCommandExecution(
@@ -140,6 +182,7 @@ func RecordCommandExecution(
 	executionErr error,
 ) {
 	commandName := "hostscope"
+
 	if cmd != nil {
 		commandName = cmd.CommandPath()
 	}
@@ -170,15 +213,19 @@ func RecordCommandExecution(
 		}
 
 		if err := appendCommandJSON(commandErrorsFile, record); err != nil {
-			// Logging must not change the command's exit status.
-			// Report the logging failure separately.
-			_, _ = os.Stderr.WriteString("Warning: could not write command error history: " + err.Error() + "\n")
+			logError(
+				err,
+				"Could not write command error history",
+				"file", commandErrorsFile,
+				"command", commandName,
+			)
 		}
 
 		return
 	}
 
 	outputFile := ""
+
 	if cmd != nil {
 		outputFile, _ = cmd.Flags().GetString("output")
 	}
@@ -194,6 +241,47 @@ func RecordCommandExecution(
 	}
 
 	if err := appendCommandJSON(commandResultsFile, record); err != nil {
-		_, _ = os.Stderr.WriteString("Warning: could not write command result history: " + err.Error() + "\n")
+		logError(
+			err,
+			"Could not write command result history",
+			"file", commandResultsFile,
+			"command", commandName,
+		)
 	}
+}
+
+func RecordScanError(
+	code string,
+	message string,
+	component string,
+	err error,
+) error {
+	details := ""
+
+	if err != nil {
+		details = sanitizeCommandOutput(err.Error())
+	}
+
+	record := commandErrorRecord{
+		Type:       "warning",
+		Code:       code,
+		Message:    sanitizeCommandOutput(message),
+		Details:    details,
+		Component:  component,
+		ExecutedAt: time.Now().UTC(),
+	}
+
+	if writeErr := appendCommandJSON(commandErrorsFile, record); writeErr != nil {
+		logError(
+			writeErr,
+			"Could not write scan error history",
+			"file", commandErrorsFile,
+			"component", component,
+			"code", code,
+		)
+
+		return writeErr
+	}
+
+	return nil
 }
