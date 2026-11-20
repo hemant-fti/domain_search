@@ -3,6 +3,7 @@ package dns
 import (
 	"context"
 	"domain-search/internal/logger"
+	"net/netip"
 )
 
 type Verifier struct {
@@ -51,10 +52,28 @@ func (v *Verifier) Verify(ctx context.Context, domain string, serverIP string) R
 		}
 	}
 
+	// Normalize the server IP before comparison.
+	serverAddr, err := netip.ParseAddr(serverIP)
+	if err != nil {
+		logger.Warn(
+			"Invalid server IP address",
+			"domain", domain,
+			"server_ip", serverIP,
+			"error", err,
+		)
+
+		return Result{
+			ResolvedIPs:   ips,
+			MatchesServer: false,
+			Status:        "invalid_server_ip",
+		}
+	}
+
+	serverIP = serverAddr.Unmap().String()
+
 	matches := matchesServerIP(ips, serverIP)
 
 	status := "resolved_other_ip"
-
 	if matches {
 		status = "matches_server"
 	}

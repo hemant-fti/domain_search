@@ -55,7 +55,7 @@ func executeApplication(ctx context.Context) error {
 			"duration", duration.String(),
 		)
 
-		return apperr.HandleCommandError(err)
+		return apperr.HandleCommandError(err, false)
 	}
 
 	logger.Info("Command execution completed",

@@ -27,6 +27,13 @@ func (r *Resolver) LookupIP(ctx context.Context, host string) ([]string, error) 
 	seen := make(map[netip.Addr]struct{}, len(ips))
 
 	for _, address := range ips {
+		// Normalize IPv4-mapped IPv6 addresses.
+		address = address.Unmap()
+
+		if !address.IsValid() {
+			continue
+		}
+
 		if _, exists := seen[address]; exists {
 			continue
 		}

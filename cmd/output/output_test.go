@@ -15,6 +15,7 @@ import (
 	"domain-search/internal/dns"
 	"domain-search/internal/inspectors"
 	"domain-search/internal/server"
+	"domain-search/internal/storage"
 )
 
 func TestWriteHumanIncludesDiscoveryFields(t *testing.T) {
@@ -206,8 +207,8 @@ func TestAppendJSONResultPreservesPriorScans(t *testing.T) {
 		if err != nil {
 			t.Fatalf("json.Marshal() error = %v", err)
 		}
-		if err := appendJSONLines(path, data); err != nil {
-			t.Fatalf("appendJSONLines() error = %v", err)
+		if err := storage.AppendMany(path, []any{data}); err != nil {
+			t.Fatalf("AppendMany() error = %v", err)
 		}
 	}
 
@@ -225,9 +226,9 @@ func TestAppendJSONResultDoesNotOverwriteInvalidExistingFile(t *testing.T) {
 		t.Fatalf("os.WriteFile() error = %v", err)
 	}
 
-	err := appendJSONLines(path, []byte(`{"scan":"new"}`))
+	err := storage.AppendMany(path, []any{[]byte(`{"scan":"new"}`)})
 	if err == nil {
-		t.Fatal("appendJSONLines() error = nil, want invalid-file error")
+		t.Fatal("AppendMany() error = nil, want invalid-file error")
 	}
 
 	data, readErr := os.ReadFile(path)

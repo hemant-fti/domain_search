@@ -1,18 +1,22 @@
 package dns
 
-import "net"
+import "net/netip"
 
-func matchesServerIP(resolvedIPs []string, serverIP string) bool {
-	target := net.ParseIP(serverIP)
-
-	if target == nil {
+func matchesServerIP(ips []string, serverIP string) bool {
+	serverAddr, err := netip.ParseAddr(serverIP)
+	if err != nil {
 		return false
 	}
 
-	for _, value := range resolvedIPs {
-		resolved := net.ParseIP(value)
+	serverAddr = serverAddr.Unmap()
 
-		if resolved != nil && resolved.Equal(target) {
+	for _, ip := range ips {
+		addr, err := netip.ParseAddr(ip)
+		if err != nil {
+			continue
+		}
+
+		if addr.Unmap() == serverAddr {
 			return true
 		}
 	}

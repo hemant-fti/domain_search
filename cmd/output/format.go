@@ -1,0 +1,111 @@
+package output
+
+import (
+	"fmt"
+	"strconv"
+	"strings"
+)
+
+func DisplayValue(value string) string {
+	value = strings.TrimSpace(value)
+
+	if value == "" {
+		return "Not reported"
+	}
+
+	return value
+}
+
+func DisplayList(values []string) string {
+	if len(values) == 0 {
+		return "None reported"
+	}
+
+	return strings.Join(values, ", ")
+}
+
+func displayPorts(ports []int) string {
+	if len(ports) == 0 {
+		return "None reported"
+	}
+
+	values := make([]string, len(ports))
+
+	for index, port := range ports {
+		values[index] = strconv.Itoa(port)
+	}
+
+	return "[" + strings.Join(values, ", ") + "]"
+}
+
+func formatCount(value int) string {
+	if value <= 0 {
+		return "Not reported"
+	}
+
+	return strconv.Itoa(value)
+}
+
+func formatStorage(value float64) string {
+	if value <= 0 {
+		return "Not reported"
+	}
+
+	return fmt.Sprintf("%.2f GiB", value)
+}
+
+func FormatUptime(seconds uint64) string {
+	const (
+		secondsPerDay  = 86400
+		secondsPerHour = 3600
+		secondsPerMin  = 60
+	)
+
+	days := seconds / secondsPerDay
+	hours := seconds % secondsPerDay / secondsPerHour
+	minutes := seconds % secondsPerHour / secondsPerMin
+
+	var parts []string
+
+	if days > 0 {
+		parts = append(parts, countWithUnit(days, "day"))
+	}
+
+	if hours > 0 {
+		parts = append(parts, countWithUnit(hours, "hour"))
+	}
+
+	if minutes > 0 {
+		parts = append(parts, countWithUnit(minutes, "minute"))
+	}
+
+	if len(parts) == 0 {
+		return "Less than a minute"
+	}
+
+	return strings.Join(parts, ", ")
+}
+
+func countWithUnit(count uint64, unit string) string {
+	if count != 1 {
+		unit += "s"
+	}
+
+	return fmt.Sprintf("%d %s", count, unit)
+}
+
+func scanStatusLabel(status string) string {
+	switch strings.ToLower(status) {
+	case "completed", "success", "successful":
+		return "COMPLETED"
+
+	case "completed_with_warnings":
+		return "COMPLETED WITH WARNINGS"
+
+	case "failed", "error":
+		return "FAILED"
+
+	default:
+		return DisplayValue(status)
+	}
+}
