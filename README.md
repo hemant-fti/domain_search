@@ -48,7 +48,7 @@ That target writes `dist/hostscope-linux-amd64`. Copy the binary to the Linux se
 
 # DNS queries use the configured system resolver; these do not enumerate
 # authoritative DNS records.
-./hostscope domains get-data-by-name --name example.com
+./hostscope domains get-data-by-name example.com
 ```
 
 The default scan timeout is two minutes. `--pretty` also selects JSON output; `--compact` selects compact JSON. JSON scan results are written to stdout unless `--output` is specified; scan records are also appended to `scan-results.jsonl` in the current working directory as JSON Lines, preserving earlier runs. Warning and error events are recorded separately in `scan-errors.jsonl`. On an error, human-readable diagnostics go to stderr; JSON-mode errors are written as a JSON object to stdout. The CLI exits with a non-zero status.
