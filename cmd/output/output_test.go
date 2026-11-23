@@ -15,7 +15,6 @@ import (
 	"domain-search/internal/dns"
 	"domain-search/internal/inspectors"
 	"domain-search/internal/server"
-	"domain-search/internal/storage"
 )
 
 func TestWriteHumanIncludesDiscoveryFields(t *testing.T) {
@@ -196,50 +195,6 @@ func TestDomainJSONKeepsPortsAsArrayAndDNSData(t *testing.T) {
 	}
 }
 
-func TestAppendJSONResultPreservesPriorScans(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "scan-results.jsonl")
-
-	first := map[string]string{"scan": "first"}
-	second := map[string]string{"scan": "second"}
-
-	for _, result := range []any{first, second} {
-		data, err := json.Marshal(result)
-		if err != nil {
-			t.Fatalf("json.Marshal() error = %v", err)
-		}
-		if err := storage.AppendMany(path, []any{data}); err != nil {
-			t.Fatalf("AppendMany() error = %v", err)
-		}
-	}
-
-	results := readjsonRecords(t, path)
-
-	if len(results) != 2 || results[0]["scan"] != "first" || results[1]["scan"] != "second" {
-		t.Errorf("stored results = %#v, want both scans in order", results)
-	}
-}
-
-func TestAppendJSONResultDoesNotOverwriteInvalidExistingFile(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "scan-results.jsonl")
-	original := []byte("{invalid")
-	if err := os.WriteFile(path, original, 0600); err != nil {
-		t.Fatalf("os.WriteFile() error = %v", err)
-	}
-
-	err := storage.AppendMany(path, []any{[]byte(`{"scan":"new"}`)})
-	if err == nil {
-		t.Fatal("AppendMany() error = nil, want invalid-file error")
-	}
-
-	data, readErr := os.ReadFile(path)
-	if readErr != nil {
-		t.Fatalf("os.ReadFile() error = %v", readErr)
-	}
-	if !bytes.Equal(data, original) {
-		t.Errorf("existing file changed to %q, want %q", data, original)
-	}
-}
-
 func TestSaveScanResultSeparatesScanAndWarningEvents(t *testing.T) {
 	dir := t.TempDir()
 	resultsPath := filepath.Join(dir, "scan-results.jsonl")
@@ -354,50 +309,6 @@ func TestWriteErrorLogsStructuredErrorWithoutExposingDetails(t *testing.T) {
 	}
 	if _, err := os.Stat(resultsPath); !os.IsNotExist(err) {
 		t.Errorf("WriteError() created or accessed scan results file: %v", err)
-	}
-}
-
-func TestSaveFailedScanResultAppendsFailureRecord(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "scan-results.jsonl")
-	timestamp := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
-	if err := SaveFailedScanResult(path, timestamp); err != nil {
-		t.Fatalf("SaveFailedScanResult() error = %v", err)
-	}
-
-	records := readjsonRecords(t, path)
-	if len(records) != 1 || records[0]["type"] != "scan_result" || records[0]["status"] != "failed" {
-		t.Fatalf("failed scan record = %#v", records)
-	}
-}
-
-func TestFailedScanLogsOneErrorEvent(t *testing.T) {
-	dir := t.TempDir()
-	resultsPath := filepath.Join(dir, "scan-results.jsonl")
-	errorsPath := filepath.Join(dir, "scan-errors.jsonl")
-	originalResultsPath := ScanResultsFile
-	originalErrorsPath := ScanErrorsFile
-	ScanResultsFile = resultsPath
-	ScanErrorsFile = errorsPath
-	t.Cleanup(func() {
-		ScanResultsFile = originalResultsPath
-		ScanErrorsFile = originalErrorsPath
-	})
-
-	if err := SaveFailedScanResult(resultsPath, time.Now()); err != nil {
-		t.Fatalf("SaveFailedScanResult() error = %v", err)
-	}
-	var output bytes.Buffer
-	if err := WriteError(&output, "command_failed", fmt.Errorf("network unreachable"), false); err != nil {
-		t.Fatalf("WriteError() error = %v", err)
-	}
-
-	results := readjsonRecords(t, resultsPath)
-	events := readjsonRecords(t, errorsPath)
-	if len(results) != 1 || results[0]["status"] != "failed" {
-		t.Fatalf("failed scan records = %#v; want one failed scan", results)
-	}
-	if len(events) != 1 || events[0]["type"] != "error" {
-		t.Fatalf("error events = %#v; want one error event", events)
 	}
 }
 

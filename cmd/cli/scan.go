@@ -2,13 +2,7 @@ package cli
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"io"
-	"os"
-	"path/filepath"
-	"runtime"
-	"strings"
 	"time"
 
 	cmdoutput "domain-search/cmd/output"
@@ -19,149 +13,43 @@ import (
 )
 
 func NewScanCommand() *cobra.Command {
-	var (
-		jsonOutput bool
-		pretty     bool
-		compact    bool
-		timeout    time.Duration
-		outputPath string
-	)
-
 	cmd := &cobra.Command{
-		Use:   "scan",
-		Short: "Discover services and system information",
-		Long:  "Scan the local server and display discovered services and system information in a human-readable format. Use --json for JSON output.",
-		Example: `  domain-search scan
-  domain-search scan --json
-  domain-search scan --compact
-  domain-search scan --timeout 5m
-  sudo domain-search scan --json > result.jsonl`,
-		Args: cobra.NoArgs,
+		Use:     "scan",
+		Short:   "Discover services and system information",
+		Long:    "Scan the local server and display discovered services and system information in a human-readable format.",
+		Example: "  domain-search scan",
+		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if timeout <= 0 {
-				return fmt.Errorf("timeout must be greater than zero")
-			}
-
-			if compact {
-				pretty = false
-			}
-
-			ctx, cancel := context.WithTimeout(cmd.Context(), timeout)
+			ctx, cancel := context.WithTimeout(
+				cmd.Context(),
+				DefaultTimeout,
+			)
 			defer cancel()
 
-			useJSON := jsonOutput || compact ||
-				cmd.Flags().Changed("pretty")
-			return RunDiscovery(cmd, ctx, outputPath, useJSON, pretty)
+			return RunDiscovery(cmd, ctx)
 		},
 	}
-
-	cmd.Flags().BoolVar(&jsonOutput, "json", false, "emit JSON output instead of human-readable text")
-	cmd.Flags().BoolVar(&pretty, "pretty", true, "indent JSON output (implies --json)")
-	cmd.Flags().BoolVar(&compact, "compact", false, "emit compact JSON output")
-	cmd.Flags().DurationVar(&timeout, "timeout", DefaultTimeout, "maximum scan duration")
-	cmd.Flags().StringVarP(&outputPath, "output", "o", "", "write the result to a file")
 
 	return cmd
 }
 
-func RunDiscovery(cmd *cobra.Command, ctx context.Context, outputPath string, useJSON, pretty bool) error {
+func RunDiscovery(cmd *cobra.Command, ctx context.Context) error {
 	service := discovery.NewLocalService()
 	startedAt := time.Now()
 
 	result, err := service.Discover(ctx)
 	if err != nil {
-		if recordErr := cmdoutput.SaveFailedScanResult(outputPath, result.ScannedAt); recordErr != nil {
-			return fmt.Errorf(
-				"discovery failed: %w (failed to record unsuccessful scan: %v)",
-				err,
-				recordErr,
-			)
-		}
-
 		return fmt.Errorf("discovery failed: %w", err)
 	}
 
-	if err := writeScanOutput(cmd, outputPath, result, useJSON, pretty); err != nil {
+	if err := cmdoutput.WriteHuman(cmd.OutOrStdout(), result); err != nil {
 		return fmt.Errorf("write discovery result: %w", err)
 	}
 
-	logger.Info("Scan completed",
+	logger.Info(
+		"Scan completed",
 		"duration", time.Since(startedAt).String(),
 	)
-
-	return nil
-}
-
-func writeScanOutput(
-	cmd *cobra.Command,
-	path string,
-	result discovery.Result,
-	useJSON, pretty bool,
-) (returnErr error) {
-	var output io.Writer = cmd.OutOrStdout()
-	var file *os.File
-
-	if path != "" {
-		if err := ValidateScanOutputPath(path); err != nil {
-			return err
-		}
-
-		var err error
-		file, err = os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0600)
-		if err != nil {
-			return fmt.Errorf("open output file %s: %w", path, err)
-		}
-
-		output = file
-
-		defer func() {
-			if err := file.Close(); err != nil {
-				returnErr = errors.Join(
-					returnErr,
-					fmt.Errorf("close output file: %w", err),
-				)
-			}
-		}()
-	}
-
-	if useJSON {
-		return cmdoutput.WriteJSONTo(output, result, pretty)
-	}
-
-	return cmdoutput.WriteHuman(output, result)
-}
-
-func ValidateScanOutputPath(path string) error {
-	outputPath, err := filepath.Abs(path)
-	if err != nil {
-		return fmt.Errorf("resolve output file path: %w", err)
-	}
-
-	for _, historyPath := range []string{
-		cmdoutput.ScanResultsFile,
-		cmdoutput.ScanErrorsFile,
-	} {
-		resolvedHistoryPath, err := filepath.Abs(historyPath)
-		if err != nil {
-			return fmt.Errorf("resolve scan history path: %w", err)
-		}
-
-		matches := filepath.Clean(outputPath) == filepath.Clean(resolvedHistoryPath)
-
-		if runtime.GOOS == "windows" {
-			matches = strings.EqualFold(
-				filepath.Clean(outputPath),
-				filepath.Clean(resolvedHistoryPath),
-			)
-		}
-
-		if matches {
-			return fmt.Errorf(
-				"output file cannot be the scan history file %s",
-				historyPath,
-			)
-		}
-	}
 
 	return nil
 }

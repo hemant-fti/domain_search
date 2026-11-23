@@ -51,29 +51,6 @@ func EnsureLinux(operation string) error {
 	return nil
 }
 
-func (s *Service) CollectSystem(ctx context.Context) (server.SystemInfo, []string, error) {
-	startedAt := time.Now()
-
-	logger.Debug("Collecting system information")
-
-	info, warnings, err := system.CollectSystemInfo(ctx)
-	if err != nil {
-		logger.Debug("System information collection failed",
-			"error", err,
-			"duration", time.Since(startedAt).String(),
-		)
-		return info, warnings, fmt.Errorf("collect system information: %w", err)
-	}
-
-	logger.Debug("System information collection completed",
-		"hostname", info.Hostname,
-		"warnings", len(warnings),
-		"duration", time.Since(startedAt).String(),
-	)
-
-	return info, warnings, nil
-}
-
 func (s *Service) Inspect(ctx context.Context, name string, options InspectOptions) (Inspection, error) {
 	startedAt := time.Now()
 
@@ -197,80 +174,6 @@ func (s *Service) Inspect(ctx context.Context, name string, options InspectOptio
 	)
 
 	return result, nil
-}
-
-func (s *Service) DiscoverDomains(ctx context.Context, names []string) ([]inspectors.Domain, error) {
-	startedAt := time.Now()
-
-	logger.Debug("Domain discovery started", "servers", names)
-
-	var domains []inspectors.Domain
-
-	for _, name := range names {
-		result, err := s.Inspect(ctx, name, InspectOptions{
-			Domains: true,
-		})
-		if err != nil {
-			return nil, err
-		}
-
-		if result.Detected {
-			domains = append(domains, result.Domains...)
-		}
-	}
-
-	logger.Debug("Domain discovery completed",
-		"domains", len(domains),
-		"duration", time.Since(startedAt).String(),
-	)
-
-	return domains, nil
-}
-
-func (s *Service) TestConfig(ctx context.Context, name string) (string, error) {
-	startedAt := time.Now()
-
-	logger.Debug("Web server configuration test started",
-		"server", name,
-	)
-
-	if err := EnsureLinux("web server configuration inspection"); err != nil {
-		return "", err
-	}
-
-	var commands []commandSpec
-
-	switch name {
-	case "nginx":
-		commands = []commandSpec{
-			{name: "nginx", args: []string{"-t"}},
-		}
-
-	case "apache":
-		commands = []commandSpec{
-			{name: "apachectl", args: []string{"configtest"}},
-			{name: "httpd", args: []string{"-t"}},
-		}
-
-	default:
-		return "", fmt.Errorf("unsupported web server: %s", name)
-	}
-
-	output, err := runFirstCommand(ctx, commands)
-	if err != nil {
-		logger.Debug("Web server configuration test failed",
-			"server", name,
-			"error", err,
-		)
-		return output, fmt.Errorf("test %s configuration: %w", name, err)
-	}
-
-	logger.Debug("Web server configuration test completed",
-		"server", name,
-		"duration", time.Since(startedAt).String(),
-	)
-
-	return strings.TrimSpace(output), nil
 }
 
 type commandSpec struct {

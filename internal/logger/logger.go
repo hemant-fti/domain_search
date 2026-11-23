@@ -40,15 +40,6 @@ var (
 	globalMu     sync.RWMutex
 )
 
-func New() (Logger, error) {
-	return NewWithConfig(Config{
-		Level:      slog.LevelInfo,
-		JSONFormat: true,
-		Console:    true,
-		AddSource:  false,
-	})
-}
-
 func NewWithConfig(cfg Config) (Logger, error) {
 	var writers []io.Writer
 
@@ -203,21 +194,6 @@ func Error(err error, msg string, args ...any) {
 	}
 
 	l.logAt(slog.LevelError, msg, args...)
-}
-
-// CloseGlobal closes the global logger.
-func CloseGlobal() error {
-	globalMu.Lock()
-	defer globalMu.Unlock()
-
-	if globalLogger == nil {
-		return nil
-	}
-
-	err := globalLogger.Close()
-	globalLogger = nil
-
-	return err
 }
 
 // logAt creates and writes a log record.

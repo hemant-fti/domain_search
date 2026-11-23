@@ -108,59 +108,15 @@ func textResult(value any, human string) commandResult {
 
 func NewSystemCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "system", Short: "Inspect local system information"}
-	cmd.AddCommand(NewSystemInfoCommand())
 	cmd.AddCommand(NewSystemCPUCommand())
 	cmd.AddCommand(NewSystemMemoryCommand())
-	cmd.AddCommand(NewSystemDiskCommand())
-	cmd.AddCommand(NewSystemNetworkCommand())
 	cmd.AddCommand(NewSystemUptimeCommand())
-	return cmd
-}
-
-func NewWebCommand() *cobra.Command {
-	cmd := &cobra.Command{Use: "web", Short: "Inspect configured web servers"}
-	cmd.AddCommand(NewWebListCommand())
-	cmd.AddCommand(NewWebServerCommand("nginx"))
-	cmd.AddCommand(NewWebServerCommand("apache"))
-	cmd.AddCommand(NewWebStatusCommand())
 	return cmd
 }
 
 func NewDomainsCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "domains", Short: "Discover configured domains and perform DNS lookups"}
 	cmd.AddCommand(NewDomainsListCommand())
-	cmd.AddCommand(NewDomainsServerCommand("nginx"))
-	cmd.AddCommand(NewDomainsServerCommand("apache"))
-	cmd.AddCommand(NewDomainsDNSCommand())
 	cmd.AddCommand(NewDomainsGetdatabyServerNameCommand())
-	return cmd
-}
-
-func NewPortsCommand() *cobra.Command {
-	cmd := &cobra.Command{Use: "ports", Short: "List local TCP and UDP sockets"}
-	cmd.AddCommand(NewPortsListCommand(""))
-	cmd.AddCommand(NewPortsListCommand("tcp"))
-	cmd.AddCommand(NewPortsListCommand("udp"))
-	return cmd
-}
-
-func NewServicesCommand() *cobra.Command {
-	cmd := &cobra.Command{Use: "services", Short: "Inspect system services"}
-	cmd.AddCommand(NewServicesListCommand())
-	cmd.AddCommand(NewServiceStatusCommand())
-	return cmd
-}
-
-func NewSSLCommand() *cobra.Command {
-	cmd := &cobra.Command{Use: "ssl", Short: "Inspect certificates referenced by local web server configuration"}
-	cmd.AddCommand(NewCertificateCommand("list"))
-	cmd.AddCommand(NewCertificateCommand("check"))
-	return cmd
-}
-
-func NewConfigCommand() *cobra.Command {
-	cmd := &cobra.Command{Use: "config", Short: "Inspect web server configuration"}
-	cmd.AddCommand(NewConfigServerCommand("nginx"))
-	cmd.AddCommand(NewConfigServerCommand("apache"))
 	return cmd
 }

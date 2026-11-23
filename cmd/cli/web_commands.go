@@ -6,309 +6,171 @@ import (
 	"strings"
 	"time"
 
-	cmdoutput "domain-search/cmd/output"
 	"domain-search/internal/discovery"
-	"domain-search/internal/dns"
 	"domain-search/internal/inspectors"
 	"domain-search/internal/logger"
 
 	"github.com/spf13/cobra"
 )
 
-func NewWebListCommand() *cobra.Command {
-	return NewWebInspectionCommand("list", "List installed Nginx and Apache servers", "")
-}
+// inspectDomains discovers domains from the requested web servers.
+//
+// A failure in one web server does not stop discovery of other servers.
+func inspectDomains(
+	ctx context.Context,
+	serverNames []string,
+) ([]inspectors.Domain, []string) {
+	service := discovery.NewLocalService()
 
-func NewWebServerCommand(name string) *cobra.Command {
-	return NewWebInspectionCommand(name, "Inspect "+name+" installation and status", name)
-}
+	domains := make([]inspectors.Domain, 0)
+	var failures []string
 
-func NewWebStatusCommand() *cobra.Command {
-	return NewWebInspectionCommand("status", "Show whether Nginx and Apache are running", "")
-}
+	for _, name := range serverNames {
+		logger.Debug("Discovering virtual hosts", "server", name)
 
-func NewWebInspectionCommand(use, short, name string) *cobra.Command {
-	var config, versionFlag, domains bool
+		result, err := service.Inspect(ctx, name, discovery.InspectOptions{
+			Domains: true,
+		})
+		if err != nil {
+			logger.Error(
+				err,
+				"Failed to discover web server domains",
+				"server", name,
+			)
 
-	cmd := newResultCommand(use, short, func(ctx context.Context, _ *cobra.Command) (commandResult, error) {
-		startedAt := time.Now()
-
-		names := []string{name}
-		if name == "" {
-			names = []string{"nginx", "apache"}
+			failures = append(
+				failures,
+				fmt.Sprintf("%s: %v", name, err),
+			)
+			continue
 		}
 
-		logger.Info("Web inspection started", "servers", names)
-
-		results := make([]discovery.Inspection, 0, len(names))
-
-		service := discovery.NewLocalService()
-
-		for _, serverName := range names {
-			logger.Debug("Inspecting web server", "server", serverName)
-
-			result, err := service.Inspect(ctx, serverName, discovery.InspectOptions{
-				Domains: domains,
-				Config:  config,
-				Version: versionFlag,
-			})
-			if err != nil {
-				return commandResult{}, err
-			}
-
-			results = append(results, result)
+		if result.Detected {
+			domains = append(domains, result.Domains...)
 		}
+	}
 
-		lines := make([]string, 0, len(results))
-
-		for _, result := range results {
-			state := "not detected"
-			if result.Detected {
-				state = "stopped"
-				if result.Running {
-					state = "running"
-				}
-			}
-
-			line := fmt.Sprintf("%s: %s", result.Server, state)
-
-			if result.Version != "" {
-				line += " (" + result.Version + ")"
-			}
-
-			if len(result.Configs) > 0 {
-				line += "\n  Configurations: " + strings.Join(result.Configs, ", ")
-			}
-
-			if len(result.Domains) > 0 {
-				domainNames := make([]string, 0, len(result.Domains))
-				for _, domain := range result.Domains {
-					domainNames = append(domainNames, domain.Name)
-				}
-				line += "\n  Domains: " + strings.Join(domainNames, ", ")
-			}
-
-			lines = append(lines, line)
-		}
-
-		logger.Info("Web inspection completed",
-			"servers", len(results),
-			"duration", time.Since(startedAt).String(),
-		)
-
-		return textResult(results, strings.Join(lines, "\n")), nil
-	})
-
-	cmd.Flags().BoolVar(&config, "config", false, "include discovered configuration file paths")
-	cmd.Flags().BoolVar(&versionFlag, "version", false, "include the installed server version")
-	cmd.Flags().BoolVar(&domains, "domains", false, "include discovered virtual hosts")
-
-	return cmd
+	return domains, failures
 }
 
 func NewDomainsListCommand() *cobra.Command {
 	return NewDomainsCommandForServer("list", "")
 }
 
-func NewDomainsServerCommand(name string) *cobra.Command {
-	return NewDomainsCommandForServer(name, name)
-}
-
 func NewDomainsCommandForServer(use, serverName string) *cobra.Command {
-	var serverFilter, configPath, documentRoot string
-	var port int
-	var aliases bool
+	return newResultCommand(
+		use,
+		"List configured virtual hosts",
+		func(ctx context.Context, _ *cobra.Command) (commandResult, error) {
+			startedAt := time.Now()
 
-	cmd := newResultCommand(use, "List configured virtual hosts", func(ctx context.Context, _ *cobra.Command) (commandResult, error) {
-		startedAt := time.Now()
-
-		names := []string{serverName}
-		if serverName == "" {
-			names = []string{"nginx", "apache"}
-		}
-
-		if serverFilter != "" {
-			names = []string{serverFilter}
-		}
-
-		logger.Info("Domain inspection started", "servers", names)
-
-		domains := make([]inspectors.Domain, 0)
-
-		service := discovery.NewLocalService()
-
-		for _, name := range names {
-			logger.Debug("Discovering virtual hosts", "server", name)
-
-			result, err := service.Inspect(ctx, name, discovery.InspectOptions{
-				Domains: true,
-			})
-			if err != nil {
-				return commandResult{}, err
+			names := []string{serverName}
+			if serverName == "" {
+				names = []string{"nginx", "apache"}
 			}
 
-			if result.Detected {
-				domains = append(domains, result.Domains...)
-			}
-		}
+			logger.Info("Domain inspection started", "servers", names)
 
-		filtered := make([]inspectors.Domain, 0, len(domains))
+			domains, failures := inspectDomains(ctx, names)
 
-		for _, domain := range domains {
-			if port != 0 && !ContainsPort(domain.Ports, port) {
-				continue
-			}
+			var lines []string
 
-			if configPath != "" && domain.ConfigPath != configPath {
-				continue
-			}
+			for _, domain := range domains {
+				line := fmt.Sprintf(
+					"%s (%s)",
+					domain.Name,
+					domain.Source,
+				)
 
-			if documentRoot != "" && domain.DocumentRoot != documentRoot {
-				continue
-			}
+				if domain.DocumentRoot != "" {
+					line += " -> " + domain.DocumentRoot
+				}
 
-			if !aliases {
-				domain.Aliases = nil
-			}
+				if len(domain.Aliases) > 0 {
+					line += " [aliases: " +
+						strings.Join(domain.Aliases, ", ") + "]"
+				}
 
-			filtered = append(filtered, domain)
-		}
-
-		var lines []string
-
-		for _, domain := range filtered {
-			line := fmt.Sprintf("%s (%s)", domain.Name, domain.Source)
-
-			if domain.DocumentRoot != "" {
-				line += " -> " + domain.DocumentRoot
+				lines = append(lines, line)
 			}
 
-			if len(domain.Aliases) > 0 {
-				line += " [aliases: " + strings.Join(domain.Aliases, ", ") + "]"
+			if len(failures) > 0 {
+				lines = append(
+					lines,
+					"",
+					"Warnings:",
+					strings.Join(failures, "\n"),
+				)
 			}
 
-			lines = append(lines, line)
-		}
+			logger.Info(
+				"Domain inspection completed",
+				"domains_found", len(domains),
+				"failed_servers", len(failures),
+				"duration", time.Since(startedAt).String(),
+			)
 
-		logger.Info("Domain inspection completed",
-			"domains_found", len(filtered),
-			"duration", time.Since(startedAt).String(),
-		)
+			if len(domains) == 0 && len(failures) > 0 {
+				return commandResult{}, fmt.Errorf(
+					"domain discovery failed: %s",
+					strings.Join(failures, "; "),
+				)
+			}
 
-		if len(lines) == 0 {
-			return textResult(filtered, "No virtual hosts were found."), nil
-		}
+			if len(domains) == 0 {
+				return textResult(
+					domains,
+					"No virtual hosts were found.",
+				), nil
+			}
 
-		return textResult(filtered, strings.Join(lines, "\n")), nil
-	})
-
-	cmd.Flags().StringVar(&serverFilter, "server", "", "filter by nginx or apache")
-	cmd.Flags().IntVar(&port, "port", 0, "filter by configured listening port")
-	cmd.Flags().BoolVar(&aliases, "aliases", false, "include domain aliases")
-	cmd.Flags().StringVar(&configPath, "config-path", "", "filter by configuration path")
-	cmd.Flags().StringVar(&documentRoot, "document-root", "", "filter by document root")
-
-	cmd.PreRunE = func(cmd *cobra.Command, _ []string) error {
-		if serverFilter != "" && serverFilter != "nginx" && serverFilter != "apache" {
-			return fmt.Errorf("--server must be nginx or apache")
-		}
-
-		if (cmd.Flags().Changed("port") && port < 1) || port > 65535 {
-			return fmt.Errorf("--port must be between 1 and 65535")
-		}
-
-		return nil
-	}
-
-	return cmd
-}
-
-func NewDomainsDNSCommand() *cobra.Command {
-	var domain, record string
-
-	cmd := newResultCommand("dns", "Look up DNS records using the configured resolver", func(ctx context.Context, _ *cobra.Command) (commandResult, error) {
-		startedAt := time.Now()
-
-		logger.Info("DNS lookup started",
-			"domain", domain,
-			"record", record,
-		)
-
-		result, err := dns.NewResolver().LookupRecord(ctx, record, domain)
-		if err != nil {
-			return commandResult{}, err
-		}
-
-		logger.Info("DNS lookup completed",
-			"domain", result.Domain,
-			"record", result.Type,
-			"records_found", len(result.Records),
-			"duration", time.Since(startedAt).String(),
-		)
-
-		human := fmt.Sprintf(
-			"%s records for %s:\n%s",
-			result.Type,
-			result.Domain,
-			cmdoutput.DisplayList(result.Records),
-		)
-
-		return textResult(result, human), nil
-	})
-
-	cmd.Long = "Look up DNS records through the system resolver. This performs DNS lookup only; it does not enumerate authoritative DNS records."
-
-	cmd.Flags().StringVar(&domain, "domain", "", "domain name to look up")
-	cmd.Flags().StringVar(&record, "record", "A", "record type: A, AAAA, MX, NS, or TXT")
-
-	if err := cmd.MarkFlagRequired("domain"); err != nil {
-		panic(err)
-	}
-
-	return cmd
-}
-
-func ContainsPort(ports []int, port int) bool {
-	for _, current := range ports {
-		if current == port {
-			return true
-		}
-	}
-	return false
+			return textResult(
+				domains,
+				strings.Join(lines, "\n"),
+			), nil
+		},
+	)
 }
 
 func NewDomainsGetdatabyServerNameCommand() *cobra.Command {
-	var domainName string
-
 	cmd := newResultCommand(
-		"get-data-by-name",
+		"get-data-by-name <domain>",
 		"Retrieve domain data by name",
-		func(ctx context.Context, _ *cobra.Command) (commandResult, error) {
-			name := strings.TrimSpace(domainName)
-			if name == "" {
+		func(ctx context.Context, cmd *cobra.Command) (commandResult, error) {
+			// Positional arguments must be read using cmd.Arg().
+			args := cmd.Flags().Args()
+			if len(args) == 0 {
 				return commandResult{}, fmt.Errorf("domain name cannot be empty")
+			}
+			name := strings.TrimSpace(args[0])
+
+			if name == "" {
+				return commandResult{}, fmt.Errorf(
+					"domain name cannot be empty",
+				)
 			}
 
 			startedAt := time.Now()
 
 			logger.Info("Domain lookup started", "domain", name)
 
-			service := discovery.NewLocalService()
-
-			domains, err := service.DiscoverDomains(
+			domains, failures := inspectDomains(
 				ctx,
 				[]string{"nginx", "apache"},
 			)
-			if err != nil {
-				return commandResult{}, fmt.Errorf("discover domain data: %w", err)
-			}
 
 			for _, domain := range domains {
-				matched := strings.EqualFold(domain.Name, name)
+				matched := strings.EqualFold(
+					strings.TrimSpace(domain.Name),
+					name,
+				)
 
 				if !matched {
 					for _, alias := range domain.Aliases {
-						if strings.EqualFold(strings.TrimSpace(alias), name) {
+						if strings.EqualFold(
+							strings.TrimSpace(alias),
+							name,
+						) {
 							matched = true
 							break
 						}
@@ -319,8 +181,10 @@ func NewDomainsGetdatabyServerNameCommand() *cobra.Command {
 					continue
 				}
 
-				logger.Info("Domain lookup completed",
+				logger.Info(
+					"Domain lookup completed",
 					"domain", name,
+					"server", domain.Source,
 					"duration", time.Since(startedAt).String(),
 				)
 
@@ -343,7 +207,20 @@ func NewDomainsGetdatabyServerNameCommand() *cobra.Command {
 					domain.Ports,
 				)
 
+				if len(failures) > 0 {
+					human += "\n\nWarnings:\n" +
+						strings.Join(failures, "\n")
+				}
+
 				return textResult(domain, human), nil
+			}
+
+			if len(failures) > 0 {
+				return commandResult{}, fmt.Errorf(
+					"domain %q was not found; some servers could not be inspected: %s",
+					name,
+					strings.Join(failures, "; "),
+				)
 			}
 
 			return commandResult{}, fmt.Errorf(
@@ -353,16 +230,7 @@ func NewDomainsGetdatabyServerNameCommand() *cobra.Command {
 		},
 	)
 
-	cmd.Flags().StringVar(
-		&domainName,
-		"name",
-		"",
-		"Name of the domain to retrieve",
-	)
-
-	if err := cmd.MarkFlagRequired("name"); err != nil {
-		panic(err)
-	}
+	cmd.Args = cobra.ExactArgs(1)
 
 	return cmd
 }

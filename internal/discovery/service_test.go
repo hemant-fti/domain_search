@@ -2,28 +2,11 @@ package discovery
 
 import (
 	"context"
-	"errors"
 	"runtime"
 	"testing"
 
 	"domain-search/internal/inspectors"
 )
-
-type inspectionExecutor struct {
-	commands map[string]string
-	errors   map[string]error
-}
-
-func (e *inspectionExecutor) Run(_ context.Context, command string) (string, error) {
-	if err := e.errors[command]; err != nil {
-		return "", err
-	}
-	return e.commands[command], nil
-}
-
-func (e *inspectionExecutor) ReadFiles(context.Context, []string) (map[string]string, error) {
-	return nil, errors.New("not implemented")
-}
 
 type testInspector struct {
 	name        string

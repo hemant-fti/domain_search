@@ -11,12 +11,7 @@ import (
 	"domain-search/internal/storage"
 )
 
-func WriteError(
-	output io.Writer,
-	code string,
-	err error,
-	jsonMode bool,
-) error {
+func WriteError(output io.Writer, code string, err error, jsonMode bool) error {
 	if err == nil {
 		return nil
 	}
@@ -50,7 +45,7 @@ func WriteError(
 		}
 	}
 
-	logErr := storage.Append(ScanErrorsFile, event)
+	logErr := storage.Append(event, ScanErrorsFile)
 
 	if logErr != nil {
 		logErr = fmt.Errorf("save error event: %w", logErr)

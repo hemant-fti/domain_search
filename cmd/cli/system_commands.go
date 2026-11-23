@@ -3,67 +3,14 @@ package cli
 import (
 	"context"
 	"fmt"
-	"os"
-	"runtime"
-	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
 
 	cmdoutput "domain-search/cmd/output"
-	"domain-search/internal/discovery"
 	"domain-search/internal/inspectors/system"
 	"domain-search/internal/logger"
-	"domain-search/internal/server"
 )
-
-type systemCommandResult struct {
-	System   any      `json:"system"`
-	Warnings []string `json:"warnings,omitempty"`
-}
-
-func NewSystemInfoCommand() *cobra.Command {
-	var all, details bool
-
-	cmd := newResultCommand("info", "Show system identity and resource information", func(ctx context.Context, _ *cobra.Command) (commandResult, error) {
-		startedAt := time.Now()
-		logger.Info("System information inspection started")
-
-		info, warnings, err := discovery.NewLocalService().CollectSystem(ctx)
-		if err != nil {
-			return commandResult{}, err
-		}
-
-		human := fmt.Sprintf(
-			"Hostname: %s\nOperating system: %s %s\nArchitecture: %s\nKernel: %s\nCPU: %s (%d cores, %d threads)\nMemory: %.2f GiB total, %.2f GiB available\nRoot disk: %.2f GiB total, %.2f GiB free\nUptime: %s\nIPv4: %s\nIPv6: %s",
-			info.Hostname, info.ServerOS, info.OSVersion, info.Architecture, info.Kernel,
-			info.CPUModel, info.Cores, info.Threads, info.Memory.TotalGB, info.Memory.AvailableGB,
-			info.Disk.TotalGB, info.Disk.FreeGB, cmdoutput.FormatUptime(info.Uptime),
-			cmdoutput.DisplayList(info.IPv4), cmdoutput.DisplayList(info.IPv6),
-		)
-
-		if all || details {
-			human += fmt.Sprintf(
-				"\nMAC address: %s\nCurrent user: %s\nTime zone: %s\nDisk used: %.2f GiB\nMemory free: %.2f GiB",
-				cmdoutput.DisplayValue(info.MAC), cmdoutput.DisplayValue(info.CurrentUser), cmdoutput.DisplayValue(info.Timezone),
-				info.Disk.UsedGB, info.Memory.FreeGB,
-			)
-		}
-
-		logger.Info("System information inspection completed",
-			"hostname", info.Hostname,
-			"warnings", len(warnings),
-			"duration", time.Since(startedAt).String(),
-		)
-
-		return textResult(systemCommandResult{System: info, Warnings: warnings}, human), nil
-	})
-
-	cmd.Flags().BoolVar(&all, "all", false, "show all collected system fields in human-readable output")
-	cmd.Flags().BoolVar(&details, "details", false, "include additional hardware and resource details")
-
-	return cmd
-}
 
 func NewSystemCPUCommand() *cobra.Command {
 	return newResultCommand("cpu", "Show CPU model and core counts", func(ctx context.Context, _ *cobra.Command) (commandResult, error) {
@@ -106,72 +53,6 @@ func NewSystemMemoryCommand() *cobra.Command {
 		return textResult(info,
 			fmt.Sprintf("Total: %.2f GiB\nUsed: %.2f GiB\nAvailable: %.2f GiB\nFree: %.2f GiB",
 				info.TotalGB, info.UsedGB, info.AvailableGB, info.FreeGB)), nil
-	})
-}
-
-func NewSystemDiskCommand() *cobra.Command {
-	var path string
-
-	cmd := newResultCommand("disk", "Show disk usage for a path", func(ctx context.Context, _ *cobra.Command) (commandResult, error) {
-		startedAt := time.Now()
-
-		if strings.TrimSpace(path) == "" {
-			path = "/"
-			if runtime.GOOS == "windows" {
-				path = os.Getenv("SystemDrive")
-				if path == "" {
-					path = "C:"
-				}
-				path += `\`
-			}
-		}
-
-		logger.Debug("Disk inspection started", "path", path)
-
-		usage, err := system.CollectDiskInfo(ctx, path)
-		if err != nil {
-			return commandResult{}, err
-		}
-
-		logger.Debug("Disk inspection completed",
-			"path", path,
-			"total_gb", usage.TotalGB,
-			"used_gb", usage.UsedGB,
-			"duration", time.Since(startedAt).String(),
-		)
-
-		value := struct {
-			Path  string          `json:"path"`
-			Usage server.DiskInfo `json:"usage"`
-		}{path, usage}
-
-		return textResult(value, fmt.Sprintf("Path: %s\nTotal: %.2f GiB\nUsed: %.2f GiB\nFree: %.2f GiB",
-			path, usage.TotalGB, usage.UsedGB, usage.FreeGB)), nil
-	})
-
-	cmd.Flags().StringVar(&path, "path", "", "filesystem path to inspect (defaults to the platform root)")
-
-	return cmd
-}
-
-func NewSystemNetworkCommand() *cobra.Command {
-	return newResultCommand("network", "Show local network addresses", func(ctx context.Context, _ *cobra.Command) (commandResult, error) {
-		startedAt := time.Now()
-		logger.Debug("Network inspection started")
-
-		info, err := system.CollectNetworkInfo(ctx)
-		if err != nil {
-			return commandResult{}, err
-		}
-
-		logger.Debug("Network inspection completed",
-			"ipv4_count", len(info.IPv4),
-			"ipv6_count", len(info.IPv6),
-			"duration", time.Since(startedAt).String(),
-		)
-
-		return textResult(info,
-			fmt.Sprintf("IPv4: %s\nIPv6: %s\nMAC: %s", cmdoutput.DisplayList(info.IPv4), cmdoutput.DisplayList(info.IPv6), cmdoutput.DisplayValue(info.MAC))), nil
 	})
 }
 

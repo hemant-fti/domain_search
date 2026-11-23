@@ -2,7 +2,6 @@ package cli
 
 import (
 	"context"
-	cmdoutput "domain-search/cmd/output"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -62,17 +61,6 @@ func TestResultCommandWritesSelectedOutputFile(t *testing.T) {
 	}
 }
 
-func TestScanOutputCannotOverwriteHistory(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "scan-results.jsonl")
-	original := cmdoutput.ScanResultsFile
-	cmdoutput.ScanResultsFile = path
-	t.Cleanup(func() { cmdoutput.ScanResultsFile = original })
-
-	if err := ValidateScanOutputPath(path); err == nil {
-		t.Fatal("ValidateScanOutputPath() accepted the history file path")
-	}
-}
-
 func TestResultCommandRejectsNonpositiveTimeout(t *testing.T) {
 	called := false
 	cmd := newResultCommand("result", "test result", func(context.Context, *cobra.Command) (commandResult, error) {
@@ -89,50 +77,5 @@ func TestResultCommandRejectsNonpositiveTimeout(t *testing.T) {
 	}
 	if called {
 		t.Fatal("command callback ran with a nonpositive timeout")
-	}
-}
-
-func TestCertificateDurationSupportsDays(t *testing.T) {
-	duration, err := parseCertificateDuration("30d")
-	if err != nil {
-		t.Fatalf("parseCertificateDuration() error = %v", err)
-	}
-	if duration.Hours() != 24*30 {
-		t.Fatalf("parsed duration = %s, want 720h", duration)
-	}
-	if _, err := parseCertificateDuration("invalid"); err == nil {
-		t.Fatal("parseCertificateDuration() accepted invalid input")
-	}
-}
-
-func TestRequestsJSONOutputMatchesCommandFlags(t *testing.T) {
-	tests := []struct {
-		args []string
-		want bool
-	}{
-		{args: []string{"system", "cpu", "--json"}, want: true},
-		{args: []string{"scan", "--compact=true"}, want: true},
-		{args: []string{"system", "cpu", "--json=false"}, want: false},
-		{args: []string{"scan", "--compact=false"}, want: false},
-		{args: []string{"system", "info", "--pretty=false"}, want: true},
-	}
-	for _, test := range tests {
-		if got := cmdoutput.RequestsJSONOutput(test.args); got != test.want {
-			t.Errorf("RequestsJSONOutput(%v) = %t, want %t", test.args, got, test.want)
-		}
-	}
-}
-
-func TestServiceStatusRequiresExactlyOneArgument(t *testing.T) {
-	cmd := NewServiceStatusCommand()
-	cmd.SilenceErrors = true
-	cmd.SilenceUsage = true
-	cmd.SetArgs(nil)
-	err := cmd.Execute()
-	if err == nil {
-		t.Fatal("Execute() error = nil, want argument validation error")
-	}
-	if !strings.Contains(err.Error(), "accepts 1 arg") {
-		t.Fatalf("Execute() error = %v, want Cobra argument error", err)
 	}
 }

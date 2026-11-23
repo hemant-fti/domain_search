@@ -35,18 +35,6 @@ That target writes `dist/hostscope-linux-amd64`. Copy the binary to the Linux se
 # Human-readable report
 ./hostscope scan
 
-# Indented JSON
-./hostscope scan --json
-
-# Compact JSON
-./hostscope scan --compact
-
-# Save JSON to a file
-./hostscope scan --json --output scan.jsonl
-
-# Set the maximum scan duration
-./hostscope scan --timeout 3m
-
 # Print the CLI version
 ./hostscope version
 ```
@@ -78,53 +66,16 @@ Examples:
 
 ```bash
 # System information; focused commands collect only their requested category
-hostscope system info --json
-hostscope system info --all
-hostscope system info --details
 hostscope system cpu
 hostscope system memory
-hostscope system disk --path /
-hostscope system network
-hostscope system uptime
+hostscope system uptime    
 
 # Installed/running web servers and parsed virtual hosts
-hostscope web list
-hostscope web nginx --version --config --domains
-hostscope web apache
-hostscope web status
-hostscope domains list --server nginx --port 443 --aliases
-hostscope domains nginx --config-path /etc/nginx/sites-enabled/site
-hostscope domains apache --document-root /var/www/site
+hostscope domains list
 
 # DNS queries use the configured system resolver; these do not enumerate
 # authoritative DNS records.
-hostscope domains dns --domain example.com --record A
-hostscope domains dns --domain example.com --record AAAA
-hostscope domains dns --domain example.com --record MX
-hostscope domains dns --domain example.com --record NS
-hostscope domains dns --domain example.com --record TXT
 hostscope domains get-data-by-name --name example.com
-
-# Local sockets only; this does not scan remote hosts
-hostscope ports list --state listening --process
-hostscope ports tcp --port 443 --pid 1234
-hostscope ports udp --range 8000-9000
-hostscope ports list --all --protocol tcp
-
-# Linux systemd services
-hostscope services list --running
-hostscope services list --stopped --enabled
-hostscope services status nginx
-
-# Certificates are read from local certificate paths discovered in web
-# server configuration. Private keys and remote TLS endpoints are not read.
-hostscope ssl list --domain example.com
-hostscope ssl check --expired
-hostscope ssl check --expiring-in 30d
-
-# Native config tests do not print configuration file contents.
-hostscope config nginx --test --virtual-hosts
-hostscope config apache --test
 ```
 
 DNS lookup supports only A, AAAA, MX, NS, and TXT records. Ports are local TCP/UDP sockets. `--all` includes non-listening TCP connections; UDP has no TCP-style listening state and is reported as bound. SSL commands inspect certificates referenced by local configuration and do not probe remote TLS services. Service management commands require Linux with systemd. Web-server discovery/configuration commands require Linux and the corresponding Nginx or Apache tools; protected configuration may require appropriate privileges. System metrics and local socket listing use the existing gopsutil collectors and depend on host permissions/platform support.

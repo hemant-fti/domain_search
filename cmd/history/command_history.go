@@ -112,7 +112,7 @@ func RecordCommandExecution(
 				security.RedactText(stdout)
 		}
 
-		if err := storage.Append(commandErrorsFile, record); err != nil {
+		if err := storage.Append(record, commandErrorsFile); err != nil {
 			fmt.Fprintf(
 				os.Stderr,
 				"Could not save command error history: %v\n",
@@ -139,37 +139,11 @@ func RecordCommandExecution(
 		OutputFile: outputFile,
 	}
 
-	if err := storage.Append(commandResultsFile, record); err != nil {
+	if err := storage.Append(record, commandResultsFile); err != nil {
 		fmt.Fprintf(
 			os.Stderr,
 			"Could not save command result history: %v\n",
 			err,
 		)
 	}
-}
-
-// RecordScanError records a warning or error from a scan.
-func RecordScanError(
-	code string,
-	message string,
-	component string,
-	err error,
-) error {
-	record := commandErrorRecord{
-		Type:       "warning",
-		Code:       code,
-		Message:    security.RedactText(message),
-		Component:  component,
-		ExecutedAt: time.Now().UTC(),
-	}
-
-	if err != nil {
-		record.Details = security.RedactText(err.Error())
-	}
-
-	if writeErr := storage.Append(commandErrorsFile, record); writeErr != nil {
-		return fmt.Errorf("save scan error history: %w", writeErr)
-	}
-
-	return nil
 }
