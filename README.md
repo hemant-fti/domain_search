@@ -37,6 +37,18 @@ That target writes `dist/hostscope-linux-amd64`. Copy the binary to the Linux se
 
 # Print the CLI version
 ./hostscope version
+
+# System information; focused commands collect only their requested category
+./hostscope system cpu
+./hostscope system memory
+./hostscope system uptime    
+
+# Installed/running web servers and parsed virtual hosts
+./hostscope domains list
+
+# DNS queries use the configured system resolver; these do not enumerate
+# authoritative DNS records.
+./hostscope domains get-data-by-name --name example.com
 ```
 
 The default scan timeout is two minutes. `--pretty` also selects JSON output; `--compact` selects compact JSON. JSON scan results are written to stdout unless `--output` is specified; scan records are also appended to `scan-results.jsonl` in the current working directory as JSON Lines, preserving earlier runs. Warning and error events are recorded separately in `scan-errors.jsonl`. On an error, human-readable diagnostics go to stderr; JSON-mode errors are written as a JSON object to stdout. The CLI exits with a non-zero status.
@@ -65,17 +77,7 @@ Commands that return discovery results support `--json`, `--pretty`, `--compact`
 Examples:
 
 ```bash
-# System information; focused commands collect only their requested category
-hostscope system cpu
-hostscope system memory
-hostscope system uptime    
 
-# Installed/running web servers and parsed virtual hosts
-hostscope domains list
-
-# DNS queries use the configured system resolver; these do not enumerate
-# authoritative DNS records.
-hostscope domains get-data-by-name --name example.com
 ```
 
 DNS lookup supports only A, AAAA, MX, NS, and TXT records. Ports are local TCP/UDP sockets. `--all` includes non-listening TCP connections; UDP has no TCP-style listening state and is reported as bound. SSL commands inspect certificates referenced by local configuration and do not probe remote TLS services. Service management commands require Linux with systemd. Web-server discovery/configuration commands require Linux and the corresponding Nginx or Apache tools; protected configuration may require appropriate privileges. System metrics and local socket listing use the existing gopsutil collectors and depend on host permissions/platform support.
