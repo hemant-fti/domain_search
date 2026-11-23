@@ -45,9 +45,10 @@ type SystemInfo struct {
 }
 
 type DiskInfo struct {
-	TotalGB float64 `json:"total_gb"`
-	FreeGB  float64 `json:"free_gb"`
-	UsedGB  float64 `json:"used_gb"`
+	TotalGB     float64 `json:"total_gb"`
+	FreeGB      float64 `json:"free_gb"`
+	UsedGB      float64 `json:"used_gb"`
+	AvailableGB float64 `json:"available_gb"`
 }
 
 type MemoryInfo struct {

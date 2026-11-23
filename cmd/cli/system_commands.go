@@ -79,3 +79,32 @@ func NewSystemUptimeCommand() *cobra.Command {
 		return textResult(value, "Uptime: "+value.Display), nil
 	})
 }
+
+func NewDiskUsageCommand() *cobra.Command {
+	return newResultCommand("disk", "Show disk usage", func(ctx context.Context, _ *cobra.Command) (commandResult, error) {
+		startedAt := time.Now()
+		logger.Debug("Disk usage inspection started")
+
+		info, err := system.CollectDiskInfo(ctx, "/")
+		if err != nil {
+			return commandResult{}, err
+		}
+
+		logger.Debug("Disk usage inspection completed",
+			"total_gb", info.TotalGB,
+			"used_gb", info.UsedGB,
+			"free_gb", info.FreeGB,
+			"available_gb", info.AvailableGB,
+			"duration", time.Since(startedAt).String(),
+		)
+
+		return textResult(info,
+			fmt.Sprintf(
+				"Total: %.2f GiB\nUsed: %.2f GiB\nAvailable: %.2f GiB\nFree: %.2f GiB",
+				info.TotalGB,
+				info.UsedGB,
+				info.AvailableGB,
+				info.FreeGB,
+			)), nil
+	})
+}

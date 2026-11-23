@@ -42,6 +42,7 @@ That target writes `dist/hostscope-linux-amd64`. Copy the binary to the Linux se
 ./hostscope system cpu
 ./hostscope system memory
 ./hostscope system uptime    
+./hostscope system disk
 
 # Installed/running web servers and parsed virtual hosts
 ./hostscope domains list

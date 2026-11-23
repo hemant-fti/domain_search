@@ -1,3 +1,5 @@
+//go:build windows
+
 package nginx
 
 import (
@@ -10,7 +12,11 @@ import (
 )
 
 func discoverNginx(ctx context.Context) ([]inspectors.Domain, error) {
-	nginxPath, err := exec.LookPath("nginx")
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	nginxPath, err := exec.LookPath("nginx.exe")
 	if err != nil {
 		return nil, fmt.Errorf("nginx executable not found: %w", err)
 	}
@@ -24,6 +30,10 @@ func discoverNginx(ctx context.Context) ([]inspectors.Domain, error) {
 }
 
 func executeNginxConfig(ctx context.Context, nginxPath string) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+
 	cmd := exec.CommandContext(ctx, nginxPath, "-T")
 
 	output, err := cmd.CombinedOutput()
@@ -35,28 +45,9 @@ func executeNginxConfig(ctx context.Context, nginxPath string) (string, error) {
 		return "", ctx.Err()
 	}
 
-	sudoPath, sudoErr := exec.LookPath("sudo")
-	if sudoErr != nil {
-		return "", fmt.Errorf(
-			"nginx -T failed: %w; sudo is unavailable",
-			err,
-		)
-	}
-
-	sudoCmd := exec.CommandContext(ctx, sudoPath, "-n", nginxPath, "-T")
-	sudoOutput, sudoErr := sudoCmd.CombinedOutput()
-
-	if sudoErr != nil {
-		if ctx.Err() != nil {
-			return "", ctx.Err()
-		}
-
-		return "", fmt.Errorf(
-			"nginx -T failed: %s; sudo retry failed: %s",
-			strings.TrimSpace(string(output)),
-			strings.TrimSpace(string(sudoOutput)),
-		)
-	}
-
-	return string(sudoOutput), nil
+	return "", fmt.Errorf(
+		"nginx -T failed: %s: %w",
+		strings.TrimSpace(string(output)),
+		err,
+	)
 }

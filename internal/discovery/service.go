@@ -233,7 +233,7 @@ func (s *Service) Discover(ctx context.Context) (Result, error) {
 
 	var found []inspectors.Domain
 
-	systemInfo, warnings, collectErr := system.CollectSystemInfo(ctx)
+	systemInfo, warnings, collectErr := system.GetSysInfo(ctx)
 	result.System = systemInfo
 	appendWarnings(&result, warnings)
 

@@ -111,6 +111,7 @@ func NewSystemCommand() *cobra.Command {
 	cmd.AddCommand(NewSystemCPUCommand())
 	cmd.AddCommand(NewSystemMemoryCommand())
 	cmd.AddCommand(NewSystemUptimeCommand())
+	cmd.AddCommand(NewDiskUsageCommand())
 	return cmd
 }
 

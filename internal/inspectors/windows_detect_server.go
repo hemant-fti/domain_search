@@ -1,3 +1,5 @@
+//go:build windows
+
 package inspectors
 
 import (
@@ -16,10 +18,15 @@ func DetectWebServer(ctx context.Context, service string) (bool, error) {
 
 	switch strings.ToLower(service) {
 	case "apache":
-		binaries = []string{"apachectl", "httpd"}
+		binaries = []string{
+			"httpd.exe",
+			"apache.exe",
+		}
 
 	case "nginx":
-		binaries = []string{"nginx"}
+		binaries = []string{
+			"nginx.exe",
+		}
 
 	default:
 		return false, fmt.Errorf("unsupported web server: %s", service)
