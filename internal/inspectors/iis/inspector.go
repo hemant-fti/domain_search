@@ -4,8 +4,8 @@ import (
 	"context"
 
 	"domain-search/internal/inspectors"
-	"domain-search/internal/logger"
 	"domain-search/models"
+	"domain-search/pkg/logger"
 )
 
 type Inspector struct{}

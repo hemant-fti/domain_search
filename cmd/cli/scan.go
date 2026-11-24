@@ -7,7 +7,7 @@ import (
 
 	cmdoutput "domain-search/cmd/output"
 	"domain-search/internal/discovery"
-	"domain-search/internal/logger"
+	"domain-search/pkg/logger"
 
 	"github.com/spf13/cobra"
 )

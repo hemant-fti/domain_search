@@ -9,8 +9,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"domain-search/internal/logger"
-	"domain-search/internal/security"
+	"domain-search/pkg/logger"
+	"domain-search/pkg/security"
 
 	"github.com/spf13/cobra"
 )

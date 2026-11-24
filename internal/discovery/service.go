@@ -11,9 +11,9 @@ import (
 	"domain-search/internal/dns"
 	"domain-search/internal/inspectors"
 	"domain-search/internal/inspectors/system"
-	"domain-search/internal/logger"
 	"domain-search/internal/server"
 	"domain-search/models"
+	"domain-search/pkg/logger"
 )
 
 type Service struct {

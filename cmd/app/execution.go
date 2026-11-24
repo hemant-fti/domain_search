@@ -5,7 +5,7 @@ import (
 	"context"
 	"domain-search/cmd/cli/rootcli"
 	"domain-search/cmd/history"
-	"domain-search/internal/logger"
+	"domain-search/pkg/logger"
 	"io"
 	"os"
 	"time"

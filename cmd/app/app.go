@@ -2,7 +2,7 @@ package app
 
 import (
 	"context"
-	"domain-search/internal/logger"
+	"domain-search/pkg/logger"
 	"os"
 	"os/signal"
 	"syscall"

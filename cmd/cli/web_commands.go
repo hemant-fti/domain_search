@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"domain-search/internal/discovery"
-	"domain-search/internal/logger"
 	"domain-search/models"
+	"domain-search/pkg/logger"
 
 	"github.com/spf13/cobra"
 )

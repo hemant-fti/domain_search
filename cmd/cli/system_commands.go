@@ -9,7 +9,7 @@ import (
 
 	cmdoutput "domain-search/cmd/output"
 	"domain-search/internal/inspectors/system"
-	"domain-search/internal/logger"
+	"domain-search/pkg/logger"
 )
 
 func NewSystemCPUCommand() *cobra.Command {
