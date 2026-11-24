@@ -3,7 +3,6 @@ package app
 import (
 	"bytes"
 	"context"
-	"domain-search/cmd/apperr"
 	"domain-search/cmd/cli/rootcli"
 	"domain-search/cmd/history"
 	"domain-search/internal/logger"
@@ -14,7 +13,6 @@ import (
 
 func executeApplication(ctx context.Context) error {
 	var stdout bytes.Buffer
-	var stderr bytes.Buffer
 	var fileOutput bytes.Buffer
 
 	ctx = context.WithValue(
@@ -26,7 +24,7 @@ func executeApplication(ctx context.Context) error {
 	command := rootcli.NewRootCommand()
 	command.SetContext(ctx)
 	command.SetOut(io.MultiWriter(os.Stdout, &stdout))
-	command.SetErr(io.MultiWriter(os.Stderr, &stderr))
+	command.SetErr(os.Stderr)
 
 	startedAt := time.Now()
 
@@ -55,7 +53,7 @@ func executeApplication(ctx context.Context) error {
 			"duration", duration.String(),
 		)
 
-		return apperr.HandleCommandError(err, false)
+		return err
 	}
 
 	logger.Info("Command execution completed",
