@@ -6,13 +6,14 @@ import (
 	"testing"
 
 	"domain-search/internal/inspectors"
+	"domain-search/models"
 )
 
 type testInspector struct {
 	name        string
 	detected    bool
 	running     bool
-	domains     []inspectors.Domain
+	domains     []models.Domain
 	detectErr   error
 	runningErr  error
 	discoverErr error
@@ -30,7 +31,7 @@ func (i *testInspector) Running(context.Context) (bool, error) {
 	return i.running, i.runningErr
 }
 
-func (i *testInspector) Discover(context.Context) ([]inspectors.Domain, error) {
+func (i *testInspector) Discover(context.Context) ([]models.Domain, error) {
 	return i.domains, i.discoverErr
 }
 
@@ -43,7 +44,7 @@ func TestInspectUsesSharedInspectorLogic(t *testing.T) {
 			name:     "nginx",
 			detected: true,
 			running:  true,
-			domains: []inspectors.Domain{
+			domains: []models.Domain{
 				{Name: "example.com", ConfigPath: "/etc/nginx/example.conf"},
 			},
 		},

@@ -13,8 +13,8 @@ import (
 
 	"domain-search/internal/discovery"
 	"domain-search/internal/dns"
-	"domain-search/internal/inspectors"
 	"domain-search/internal/server"
+	"domain-search/models"
 )
 
 func TestWriteHumanIncludesDiscoveryFields(t *testing.T) {
@@ -71,7 +71,7 @@ func TestWriteHumanIncludesDiscoveryFields(t *testing.T) {
 		DetectedServices: []string{"nginx"},
 		TotalDomains:     1,
 		Domains: []discovery.DomainResult{{
-			Domain: inspectors.Domain{
+			Domain: models.Domain{
 				Name:           "example.com",
 				Source:         "nginx",
 				ConfigPath:     "/etc/nginx/sites-enabled/example",
@@ -146,7 +146,7 @@ func TestWriteDomainsReportsMissingCertificatePaths(t *testing.T) {
 	var output bytes.Buffer
 	writeDomains(&output, discovery.Result{
 		Domains: []discovery.DomainResult{{
-			Domain: inspectors.Domain{Name: "example.com"},
+			Domain: models.Domain{Name: "example.com"},
 		}},
 	})
 
@@ -162,7 +162,7 @@ func TestWriteDomainsReportsMissingCertificatePaths(t *testing.T) {
 
 func TestDomainJSONKeepsPortsAsArrayAndDNSData(t *testing.T) {
 	result := discovery.DomainResult{
-		Domain: inspectors.Domain{
+		Domain: models.Domain{
 			Name:  "www.example.com",
 			Ports: []int{80, 443},
 		},

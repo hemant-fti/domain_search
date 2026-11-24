@@ -4,14 +4,13 @@ package nginx
 
 import (
 	"context"
+	"domain-search/models"
 	"fmt"
 	"os/exec"
 	"strings"
-
-	"domain-search/internal/inspectors"
 )
 
-func discoverNginx(ctx context.Context) ([]inspectors.Domain, error) {
+func discoverNginx(ctx context.Context) ([]models.Domain, error) {
 	nginxPath, err := exec.LookPath("nginx")
 	if err != nil {
 		return nil, fmt.Errorf("nginx executable not found: %w", err)

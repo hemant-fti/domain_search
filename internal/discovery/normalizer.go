@@ -1,15 +1,14 @@
 package discovery
 
 import (
+	"domain-search/models"
 	"sort"
 	"strings"
-
-	"domain-search/internal/inspectors"
 )
 
-func Normalize(input []inspectors.Domain) []inspectors.Domain {
+func Normalize(input []models.Domain) []models.Domain {
 	index := make(map[string]int)
-	out := make([]inspectors.Domain, 0, len(input))
+	out := make([]models.Domain, 0, len(input))
 
 	for _, domain := range input {
 		domain.Name = strings.TrimSuffix(

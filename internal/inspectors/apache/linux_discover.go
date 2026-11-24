@@ -4,15 +4,14 @@ package apache
 
 import (
 	"context"
+	"domain-search/models"
 	"fmt"
 	"os"
 	"os/exec"
 	"strings"
-
-	"domain-search/internal/inspectors"
 )
 
-func discoverApache(ctx context.Context) ([]inspectors.Domain, error) {
+func discoverApache(ctx context.Context) ([]models.Domain, error) {
 	type command struct {
 		name string
 		args []string

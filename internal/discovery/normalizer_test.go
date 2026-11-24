@@ -1,14 +1,13 @@
 package discovery
 
 import (
+	"domain-search/models"
 	"reflect"
 	"testing"
-
-	"domain-search/internal/inspectors"
 )
 
 func TestNormalizeMergesCertificatePathsAndSortsUniquePorts(t *testing.T) {
-	domains := Normalize([]inspectors.Domain{
+	domains := Normalize([]models.Domain{
 		{
 			Name:           "www.example.com",
 			Ports:          []int{443, 80},

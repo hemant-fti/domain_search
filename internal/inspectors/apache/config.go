@@ -1,7 +1,7 @@
 package apache
 
 import (
-	"domain-search/internal/inspectors"
+	"domain-search/models"
 	"regexp"
 	"strings"
 )
@@ -10,7 +10,7 @@ var configMarker = regexp.MustCompile(
 	`^# DOMAIN_SCOUT_CONFIG:(.*)$`,
 )
 
-func applyDocumentRoots(domains []inspectors.Domain, text string) {
+func applyDocumentRoots(domains []models.Domain, text string) {
 	roots := make(map[string]string)
 
 	currentFile := ""

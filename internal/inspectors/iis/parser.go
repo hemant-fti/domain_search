@@ -1,11 +1,10 @@
 package iis
 
 import (
+	"domain-search/models"
 	"encoding/xml"
 	"strconv"
 	"strings"
-
-	"domain-search/internal/inspectors"
 )
 
 type IISConfiguration struct {
@@ -72,14 +71,14 @@ type IISBinding struct {
 	CertificateStoreName string `xml:"certificateStoreName,attr"`
 }
 
-func Parse(config string, configPath string) ([]inspectors.Domain, error) {
+func Parse(config string, configPath string) ([]models.Domain, error) {
 	var configuration IISConfiguration
 
 	if err := xml.Unmarshal([]byte(config), &configuration); err != nil {
 		return nil, err
 	}
 
-	var domains []inspectors.Domain
+	var domains []models.Domain
 
 	for _, site := range configuration.SystemApplicationHost.Sites.Sites {
 		hosts := make([]string, 0)
@@ -130,7 +129,7 @@ func Parse(config string, configPath string) ([]inspectors.Domain, error) {
 			sslCertificate = resolveSSLCertificate(site)
 		}
 
-		domain := inspectors.Domain{
+		domain := models.Domain{
 			Name:           hosts[0],
 			Source:         "iis",
 			ConfigPath:     configPath,

@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"domain-search/internal/discovery"
-	"domain-search/internal/inspectors"
 	"domain-search/internal/logger"
+	"domain-search/models"
 
 	"github.com/spf13/cobra"
 )
@@ -20,8 +20,8 @@ func inspectDomains(
 	ctx context.Context,
 	service *discovery.Service,
 	serverNames []string,
-) ([]inspectors.Domain, []string) {
-	domains := make([]inspectors.Domain, 0)
+) ([]models.Domain, []string) {
+	domains := make([]models.Domain, 0)
 	var failures []string
 
 	for _, name := range serverNames {

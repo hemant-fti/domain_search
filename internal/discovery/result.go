@@ -2,8 +2,8 @@ package discovery
 
 import (
 	"domain-search/internal/dns"
-	"domain-search/internal/inspectors"
 	"domain-search/internal/server"
+	"domain-search/models"
 	"time"
 )
 
@@ -20,7 +20,7 @@ type Result struct {
 }
 
 type DomainResult struct {
-	inspectors.Domain
+	models.Domain
 	DNS dns.Result `json:"dns"`
 }
 

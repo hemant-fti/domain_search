@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"domain-search/internal/inspectors"
+	"domain-search/models"
 )
 
 // statusInspector checks whether a service is running.
@@ -16,14 +17,14 @@ type statusInspector interface {
 func scanInspector(
 	ctx context.Context,
 	inspector inspectors.Inspector,
-) (ServerInfo, []inspectors.Domain, []string, error) {
+) (ServerInfo, []models.Domain, []string, error) {
 
 	result := ServerInfo{
 		Server:  inspector.Name(),
 		Domains: []DomainInfo{},
 	}
 
-	var found []inspectors.Domain
+	var found []models.Domain
 	var warnings []string
 
 	// Check service status.

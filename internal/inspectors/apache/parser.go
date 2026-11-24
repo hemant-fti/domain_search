@@ -1,7 +1,7 @@
 package apache
 
 import (
-	"domain-search/internal/inspectors"
+	"domain-search/models"
 	"regexp"
 	"strconv"
 	"strings"
@@ -12,9 +12,9 @@ var (
 	alias = regexp.MustCompile(`(?i)^\s*alias\s+([^\s]+)`)
 )
 
-func Parse(text string) []inspectors.Domain {
-	var result []inspectors.Domain
-	var current *inspectors.Domain
+func Parse(text string) []models.Domain {
+	var result []models.Domain
+	var current *models.Domain
 
 	for _, line := range strings.Split(text, "\n") {
 		line = strings.TrimRight(line, "\r")
@@ -27,7 +27,7 @@ func Parse(text string) []inspectors.Domain {
 				continue
 			}
 
-			domain := inspectors.Domain{
+			domain := models.Domain{
 				Name:       strings.TrimSpace(match[2]),
 				Source:     "apache",
 				ConfigPath: strings.TrimSpace(match[3]),
@@ -36,7 +36,7 @@ func Parse(text string) []inspectors.Domain {
 			}
 
 			// Avoid duplicate VirtualHost entries.
-			var existing *inspectors.Domain
+			var existing *models.Domain
 
 			for i := range result {
 				if result[i].Name == domain.Name &&

@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"domain-search/internal/inspectors"
+	"domain-search/models"
 )
 
 var (
@@ -17,8 +18,8 @@ var (
 	certificate = regexp.MustCompile(`(?m)^[ \t]*ssl_certificate[ \t]+([^;]+);`)
 )
 
-func Parse(config string) []inspectors.Domain {
-	var domains []inspectors.Domain
+func Parse(config string) []models.Domain {
+	var domains []models.Domain
 
 	matches := serverStart.FindAllStringIndex(config, -1)
 
@@ -45,7 +46,7 @@ func Parse(config string) []inspectors.Domain {
 			continue
 		}
 
-		domain := inspectors.Domain{
+		domain := models.Domain{
 			Name:       hosts[0],
 			Source:     "nginx",
 			ConfigPath: configPath,

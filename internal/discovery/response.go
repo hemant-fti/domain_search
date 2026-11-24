@@ -1,6 +1,6 @@
 package discovery
 
-import "domain-search/internal/inspectors"
+import "domain-search/models"
 
 type ScanResponse struct {
 	Servers []ServerInfo `json:"servers"`
@@ -22,10 +22,10 @@ type DomainInfo struct {
 }
 
 type Inspection struct {
-	Server   string              `json:"server"`
-	Detected bool                `json:"detected"`
-	Running  bool                `json:"running"`
-	Version  string              `json:"version,omitempty"`
-	Configs  []string            `json:"config_paths,omitempty"`
-	Domains  []inspectors.Domain `json:"domains,omitempty"`
+	Server   string          `json:"server"`
+	Detected bool            `json:"detected"`
+	Running  bool            `json:"running"`
+	Version  string          `json:"version,omitempty"`
+	Configs  []string        `json:"config_paths,omitempty"`
+	Domains  []models.Domain `json:"domains,omitempty"`
 }

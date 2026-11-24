@@ -1,10 +1,4 @@
-//go:build windows
-
-package inspectors
-
-import (
-	"context"
-)
+package models
 
 type Domain struct {
 	Name           string   `json:"name"`
@@ -15,10 +9,4 @@ type Domain struct {
 	SSLCertificate string   `json:"ssl_certificate"`
 	Aliases        []string `json:"aliases"`
 	Ports          []int    `json:"ports"`
-}
-
-type Inspector interface {
-	Name() string
-	Detect(context.Context) (bool, error)
-	Discover(context.Context) ([]Domain, error)
 }

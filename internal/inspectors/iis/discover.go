@@ -2,16 +2,15 @@ package iis
 
 import (
 	"context"
+	"domain-search/models"
 	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
-
-	"domain-search/internal/inspectors"
 )
 
-func discoverIIS(ctx context.Context) ([]inspectors.Domain, error) {
+func discoverIIS(ctx context.Context) ([]models.Domain, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}

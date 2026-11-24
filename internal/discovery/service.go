@@ -13,6 +13,7 @@ import (
 	"domain-search/internal/inspectors/system"
 	"domain-search/internal/logger"
 	"domain-search/internal/server"
+	"domain-search/models"
 )
 
 type Service struct {
@@ -64,7 +65,7 @@ func (s *Service) Inspect(ctx context.Context, name string, options InspectOptio
 
 	result := Inspection{
 		Server:  name,
-		Domains: []inspectors.Domain{},
+		Domains: []models.Domain{},
 		Configs: []string{},
 	}
 
@@ -295,7 +296,7 @@ func (s *Service) Discover(ctx context.Context) (Result, error) {
 
 	result.Server = info
 
-	var found []inspectors.Domain
+	var found []models.Domain
 
 	systemInfo, warnings, collectErr := system.GetSysInfo(ctx)
 	result.System = systemInfo

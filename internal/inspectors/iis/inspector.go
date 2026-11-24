@@ -5,6 +5,7 @@ import (
 
 	"domain-search/internal/inspectors"
 	"domain-search/internal/logger"
+	"domain-search/models"
 )
 
 type Inspector struct{}
@@ -41,7 +42,7 @@ func (i *Inspector) Running(ctx context.Context) (bool, error) {
 	return running, nil
 }
 
-func (i *Inspector) Discover(ctx context.Context) ([]inspectors.Domain, error) {
+func (i *Inspector) Discover(ctx context.Context) ([]models.Domain, error) {
 	domains, err := discoverIIS(ctx)
 	if err != nil {
 		logger.Error(err, "Failed to discover IIS domains")
