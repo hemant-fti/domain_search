@@ -18,10 +18,9 @@ import (
 // A failure in one web server does not stop discovery of other servers.
 func inspectDomains(
 	ctx context.Context,
+	service *discovery.Service,
 	serverNames []string,
 ) ([]inspectors.Domain, []string) {
-	service := discovery.NewLocalService()
-
 	domains := make([]inspectors.Domain, 0)
 	var failures []string
 
@@ -31,6 +30,7 @@ func inspectDomains(
 		result, err := service.Inspect(ctx, name, discovery.InspectOptions{
 			Domains: true,
 		})
+
 		if err != nil {
 			logger.Error(
 				err,
@@ -42,6 +42,7 @@ func inspectDomains(
 				failures,
 				fmt.Sprintf("%s: %v", name, err),
 			)
+
 			continue
 		}
 
@@ -64,14 +65,23 @@ func NewDomainsCommandForServer(use, serverName string) *cobra.Command {
 		func(ctx context.Context, _ *cobra.Command) (commandResult, error) {
 			startedAt := time.Now()
 
+			service := discovery.NewLocalService()
+
 			names := []string{serverName}
+
 			if serverName == "" {
-				names = []string{"nginx", "apache"}
+				names = service.InspectorNames()
+			}
+
+			if len(names) == 0 {
+				return commandResult{}, fmt.Errorf(
+					"no web server inspectors are registered for this platform",
+				)
 			}
 
 			logger.Info("Domain inspection started", "servers", names)
 
-			domains, failures := inspectDomains(ctx, names)
+			domains, failures := inspectDomains(ctx, service, names)
 
 			var lines []string
 
@@ -137,11 +147,12 @@ func NewDomainsGetdatabyServerNameCommand() *cobra.Command {
 		"get-data-by-name <domain>",
 		"Retrieve domain data by name",
 		func(ctx context.Context, cmd *cobra.Command) (commandResult, error) {
-			// Positional arguments must be read using cmd.Arg().
 			args := cmd.Flags().Args()
+
 			if len(args) == 0 {
 				return commandResult{}, fmt.Errorf("domain name cannot be empty")
 			}
+
 			name := strings.TrimSpace(args[0])
 
 			if name == "" {
@@ -154,9 +165,13 @@ func NewDomainsGetdatabyServerNameCommand() *cobra.Command {
 
 			logger.Info("Domain lookup started", "domain", name)
 
+			service := discovery.NewLocalService()
+			serverNames := service.InspectorNames()
+
 			domains, failures := inspectDomains(
 				ctx,
-				[]string{"nginx", "apache"},
+				service,
+				serverNames,
 			)
 
 			for _, domain := range domains {
@@ -224,7 +239,7 @@ func NewDomainsGetdatabyServerNameCommand() *cobra.Command {
 			}
 
 			return commandResult{}, fmt.Errorf(
-				"domain %q was not found in Nginx or Apache configurations",
+				"domain %q was not found in the available web server configurations",
 				name,
 			)
 		},

@@ -1,6 +1,4 @@
-//go:build windows
-
-package nginx
+package iis
 
 import (
 	"context"
@@ -16,41 +14,42 @@ func New() *Inspector {
 }
 
 func (i *Inspector) Name() string {
-	return "nginx"
+	return "iis"
 }
 
 func (i *Inspector) Detect(ctx context.Context) (bool, error) {
-	detected, err := inspectors.DetectWebServer(ctx, "nginx")
+	detected, err := inspectors.DetectWebServer(ctx, "iis")
 	if err != nil {
-		logger.Error(err, "Failed to detect nginx")
+		logger.Error(err, "Failed to detect IIS")
 		return false, err
 	}
 
-	logger.Info("Nginx detection completed", "detected", detected)
+	logger.Info("IIS detection completed", "detected", detected)
 
 	return detected, nil
 }
 
 func (i *Inspector) Running(ctx context.Context) (bool, error) {
-	running, err := inspectors.IsWebServerRunning(ctx, "nginx")
+	running, err := inspectors.IsWebServerRunning(ctx, "iis")
 	if err != nil {
-		logger.Error(err, "Failed to check nginx status")
+		logger.Error(err, "Failed to check IIS status")
 		return false, err
 	}
 
-	logger.Info("Nginx running status checked", "running", running)
+	logger.Info("IIS running status checked", "running", running)
 
 	return running, nil
 }
 
 func (i *Inspector) Discover(ctx context.Context) ([]inspectors.Domain, error) {
-	domains, err := discoverNginx(ctx)
+	domains, err := discoverIIS(ctx)
 	if err != nil {
-		logger.Error(err, "Failed to discover nginx domains")
+		logger.Error(err, "Failed to discover IIS domains")
 		return nil, err
 	}
 
-	logger.Info("Nginx domain discovery completed", "domains_found", len(domains))
+	logger.Info("IIS domain discovery completed",
+		"domains_found", len(domains))
 
 	return domains, nil
 }

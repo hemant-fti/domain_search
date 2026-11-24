@@ -10,8 +10,6 @@ import (
 
 	"domain-search/internal/dns"
 	"domain-search/internal/inspectors"
-	"domain-search/internal/inspectors/apache"
-	"domain-search/internal/inspectors/nginx"
 	"domain-search/internal/inspectors/system"
 	"domain-search/internal/logger"
 	"domain-search/internal/server"
@@ -31,11 +29,10 @@ func NewService(list []inspectors.Inspector) *Service {
 	}
 }
 
-func NewLocalService() *Service {
-	return NewService([]inspectors.Inspector{
-		nginx.New(),
-		apache.New(),
-	})
+type LocalService = Service
+
+func NewLocalService() *LocalService {
+	return NewService(platformInspectors())
 }
 
 type InspectOptions struct {
@@ -44,14 +41,15 @@ type InspectOptions struct {
 	Version bool
 }
 
-// EnsureLinux should only be used by operations that genuinely
-// require Linux-specific functionality.
-func EnsureLinux(operation string) error {
-	if runtime.GOOS != "linux" {
-		return fmt.Errorf("%s is supported only on Linux", operation)
+// InspectorNames returns the names of all registered inspectors.
+func (s *Service) InspectorNames() []string {
+	names := make([]string, 0, len(s.inspectors))
+
+	for _, inspector := range s.inspectors {
+		names = append(names, inspector.Name())
 	}
 
-	return nil
+	return names
 }
 
 func (s *Service) Inspect(ctx context.Context, name string, options InspectOptions) (Inspection, error) {
