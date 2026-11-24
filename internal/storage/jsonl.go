@@ -1,7 +1,8 @@
 package storage
 
 import (
-	"log/slog"
+	"encoding/json"
+	"fmt"
 
 	"domain-search/internal/logger"
 )
@@ -13,8 +14,12 @@ func Append(record any, path string) error {
 	}
 	defer file.Close()
 
-	log := slog.New(slog.NewJSONHandler(file, nil))
-	log.Info("record", "data", record)
+	encoder := json.NewEncoder(file)
+	encoder.SetEscapeHTML(false)
+
+	if err := encoder.Encode(record); err != nil {
+		return fmt.Errorf("encode JSONL record: %w", err)
+	}
 
 	return nil
 }
@@ -30,10 +35,13 @@ func AppendMany(records []any, path string) error {
 	}
 	defer file.Close()
 
-	log := slog.New(slog.NewJSONHandler(file, nil))
+	encoder := json.NewEncoder(file)
+	encoder.SetEscapeHTML(false)
 
 	for _, record := range records {
-		log.Info("record", "data", record)
+		if err := encoder.Encode(record); err != nil {
+			return fmt.Errorf("encode JSONL record: %w", err)
+		}
 	}
 
 	return nil
