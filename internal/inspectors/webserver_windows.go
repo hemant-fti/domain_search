@@ -12,66 +12,6 @@ import (
 )
 
 func DetectWebServer(ctx context.Context, service string) (bool, error) {
-	if err := ctx.Err(); err != nil {
-		return false, err
-	}
-
-	switch strings.ToLower(service) {
-	case "iis":
-		return detectIIS(ctx)
-	default:
-		return false, fmt.Errorf("unsupported Windows web server: %s", service)
-	}
-}
-
-func IsWebServerRunning(ctx context.Context, service string) (bool, error) {
-	if err := ctx.Err(); err != nil {
-		return false, err
-	}
-
-	if !strings.EqualFold(service, "iis") {
-		return false, fmt.Errorf(
-			"unsupported Windows web server: %s",
-			service,
-		)
-	}
-
-	scPath, err := exec.LookPath("sc.exe")
-	if err != nil {
-		return false, fmt.Errorf("sc.exe not found: %w", err)
-	}
-
-	cmd := exec.CommandContext(ctx, scPath, "query", "W3SVC")
-
-	output, err := cmd.CombinedOutput()
-
-	if ctx.Err() != nil {
-		return false, ctx.Err()
-	}
-
-	result := strings.ToUpper(string(output))
-
-	if strings.Contains(result, "RUNNING") {
-		return true, nil
-	}
-
-	if strings.Contains(result, "STOPPED") ||
-		strings.Contains(result, "1060") {
-		return false, nil
-	}
-
-	if err != nil {
-		return false, fmt.Errorf(
-			"failed to query IIS service: %w: %s",
-			err,
-			strings.TrimSpace(string(output)),
-		)
-	}
-
-	return false, nil
-}
-
-func detectIIS(ctx context.Context) (bool, error) {
 	windowsDir := os.Getenv("windir")
 	if windowsDir == "" {
 		windowsDir = `C:\Windows`
@@ -116,6 +56,53 @@ func detectIIS(ctx context.Context) (bool, error) {
 		"installpath",
 	) {
 		return true, nil
+	}
+
+	return false, nil
+}
+
+func IsWebServerRunning(ctx context.Context, service string) (bool, error) {
+	if err := ctx.Err(); err != nil {
+		return false, err
+	}
+
+	if !strings.EqualFold(service, "iis") {
+		return false, fmt.Errorf(
+			"unsupported Windows web server: %s",
+			service,
+		)
+	}
+
+	scPath, err := exec.LookPath("sc.exe")
+	if err != nil {
+		return false, fmt.Errorf("sc.exe not found: %w", err)
+	}
+
+	cmd := exec.CommandContext(ctx, scPath, "query", "W3SVC")
+
+	output, err := cmd.CombinedOutput()
+
+	if ctx.Err() != nil {
+		return false, ctx.Err()
+	}
+
+	result := strings.ToUpper(string(output))
+
+	if strings.Contains(result, "RUNNING") {
+		return true, nil
+	}
+
+	if strings.Contains(result, "STOPPED") ||
+		strings.Contains(result, "1060") {
+		return false, nil
+	}
+
+	if err != nil {
+		return false, fmt.Errorf(
+			"failed to query IIS service: %w: %s",
+			err,
+			strings.TrimSpace(string(output)),
+		)
 	}
 
 	return false, nil
