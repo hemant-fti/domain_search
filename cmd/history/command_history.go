@@ -3,13 +3,14 @@ package history
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"time"
 
+	"domain-search/internal/logger"
 	"domain-search/internal/security"
-	"domain-search/internal/storage"
 
 	"github.com/spf13/cobra"
 )
@@ -112,7 +113,7 @@ func RecordCommandExecution(
 				security.RedactText(stdout)
 		}
 
-		if err := storage.AppendRecords([]any{record}, commandErrorsFile); err != nil {
+		if err := AppendRecords([]any{record}, commandErrorsFile); err != nil {
 			fmt.Fprintf(
 				os.Stderr,
 				"Could not save command error history: %v\n",
@@ -139,11 +140,34 @@ func RecordCommandExecution(
 		OutputFile: outputFile,
 	}
 
-	if err := storage.AppendRecords([]any{record}, commandResultsFile); err != nil {
+	if err := AppendRecords([]any{record}, commandResultsFile); err != nil {
 		fmt.Fprintf(
 			os.Stderr,
 			"Could not save command result history: %v\n",
 			err,
 		)
 	}
+}
+
+func AppendRecords(records []any, path string) error {
+	if len(records) == 0 {
+		return nil
+	}
+
+	file, err := logger.OpenLogFile(path)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	encoder := json.NewEncoder(file)
+	encoder.SetEscapeHTML(false)
+
+	for _, record := range records {
+		if err := encoder.Encode(record); err != nil {
+			return fmt.Errorf("encode JSONL record: %w", err)
+		}
+	}
+
+	return nil
 }
