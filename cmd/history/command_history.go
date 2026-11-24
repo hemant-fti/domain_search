@@ -112,7 +112,7 @@ func RecordCommandExecution(
 				security.RedactText(stdout)
 		}
 
-		if err := storage.Append(record, commandErrorsFile); err != nil {
+		if err := storage.AppendRecords([]any{record}, commandErrorsFile); err != nil {
 			fmt.Fprintf(
 				os.Stderr,
 				"Could not save command error history: %v\n",
@@ -139,7 +139,7 @@ func RecordCommandExecution(
 		OutputFile: outputFile,
 	}
 
-	if err := storage.Append(record, commandResultsFile); err != nil {
+	if err := storage.AppendRecords([]any{record}, commandResultsFile); err != nil {
 		fmt.Fprintf(
 			os.Stderr,
 			"Could not save command result history: %v\n",

@@ -7,24 +7,7 @@ import (
 	"domain-search/internal/logger"
 )
 
-func Append(record any, path string) error {
-	file, err := logger.OpenLogFile(path)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-
-	encoder := json.NewEncoder(file)
-	encoder.SetEscapeHTML(false)
-
-	if err := encoder.Encode(record); err != nil {
-		return fmt.Errorf("encode JSONL record: %w", err)
-	}
-
-	return nil
-}
-
-func AppendMany(records []any, path string) error {
+func AppendRecords(records []any, path string) error {
 	if len(records) == 0 {
 		return nil
 	}

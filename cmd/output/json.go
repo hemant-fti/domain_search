@@ -57,7 +57,7 @@ func saveScanResult(result any) error {
 
 	record["type"] = json.RawMessage(`"scan_result"`)
 
-	if err := storage.Append(record, ScanResultsFile); err != nil {
+	if err := storage.AppendRecords([]any{record}, ScanResultsFile); err != nil {
 		return fmt.Errorf("save scan result: %w", err)
 	}
 
@@ -87,7 +87,7 @@ func saveScanResult(result any) error {
 		records[i] = event
 	}
 
-	if err := storage.AppendMany(records, ScanErrorsFile); err != nil {
+	if err := storage.AppendRecords(records, ScanErrorsFile); err != nil {
 		return fmt.Errorf("save scan warnings: %w", err)
 	}
 
