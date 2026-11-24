@@ -41,6 +41,10 @@ func detectIIS(ctx context.Context) (bool, error) {
 		return true, nil
 	}
 
+	if err := ctx.Err(); err != nil {
+		return false, err
+	}
+
 	// Fallback: check IIS installation registry key.
 	regPath, err := exec.LookPath("reg.exe")
 	if err != nil {
@@ -101,7 +105,6 @@ func IsWebServerRunning(ctx context.Context, service string) (bool, error) {
 		return true, nil
 	}
 
-	// Service is stopped or not installed.
 	if strings.Contains(result, "STOPPED") ||
 		strings.Contains(result, "1060") {
 		return false, nil

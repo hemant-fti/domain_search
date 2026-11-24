@@ -6,9 +6,40 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
+
+func DetectWebServer(ctx context.Context, service string) (bool, error) {
+	if err := ctx.Err(); err != nil {
+		return false, err
+	}
+
+	var binaries []string
+
+	switch strings.ToLower(service) {
+	case "apache":
+		binaries = []string{"apachectl", "httpd"}
+	case "nginx":
+		binaries = []string{"nginx"}
+	default:
+		return false, fmt.Errorf("unsupported web server: %s", service)
+	}
+
+	for _, binary := range binaries {
+		if err := ctx.Err(); err != nil {
+			return false, err
+		}
+
+		if _, err := exec.LookPath(binary); err == nil {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
 
 func IsWebServerRunning(ctx context.Context, service string) (bool, error) {
 	if err := ctx.Err(); err != nil {
@@ -22,13 +53,11 @@ func IsWebServerRunning(ctx context.Context, service string) (bool, error) {
 		processNames = map[string]struct{}{
 			"nginx": {},
 		}
-
 	case "apache":
 		processNames = map[string]struct{}{
 			"apache2": {},
 			"httpd":   {},
 		}
-
 	default:
 		return false, fmt.Errorf("unsupported web server: %s", service)
 	}
@@ -47,8 +76,7 @@ func IsWebServerRunning(ctx context.Context, service string) (bool, error) {
 			continue
 		}
 
-		// Linux process directories contain numeric PIDs.
-		if _, err := fmt.Sscanf(entry.Name(), "%d", new(int)); err != nil {
+		if _, err := strconv.Atoi(entry.Name()); err != nil {
 			continue
 		}
 
