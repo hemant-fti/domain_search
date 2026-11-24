@@ -27,6 +27,16 @@ var (
 		LogDirectory,
 		"command-errors.jsonl",
 	)
+
+	ScanResultsFile = filepath.Join(
+		LogDirectory,
+		"scan-results.jsonl",
+	)
+
+	ScanErrorsFile = filepath.Join(
+		LogDirectory,
+		"scan-errors.jsonl",
+	)
 )
 
 type CommandOutputCaptureKey struct{}
@@ -170,4 +180,21 @@ func AppendRecords(records []any, path string) error {
 	}
 
 	return nil
+}
+
+func MarshalJSON(result any, pretty bool) ([]byte, error) {
+	var buffer bytes.Buffer
+
+	encoder := json.NewEncoder(&buffer)
+	encoder.SetEscapeHTML(false)
+
+	if pretty {
+		encoder.SetIndent("", "  ")
+	}
+
+	if err := encoder.Encode(result); err != nil {
+		return nil, err
+	}
+
+	return buffer.Bytes(), nil
 }

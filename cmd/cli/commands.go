@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"domain-search/cmd/history"
-	cmdoutput "domain-search/cmd/output"
 
 	"github.com/spf13/cobra"
 )
@@ -54,7 +53,7 @@ func newResultCommand(use, short string, run func(context.Context, *cobra.Comman
 
 			useJSON := options.jsonl || options.compact || cmd.Flags().Changed("pretty")
 			if useJSON {
-				data, err := cmdoutput.MarshalJSON(result.value, options.pretty)
+				data, err := history.MarshalJSON(result.value, options.pretty)
 				if err != nil {
 					return fmt.Errorf("encode command result: %w", err)
 				}
