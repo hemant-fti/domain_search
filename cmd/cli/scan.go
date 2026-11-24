@@ -42,7 +42,10 @@ func RunDiscovery(cmd *cobra.Command, ctx context.Context) error {
 		return fmt.Errorf("discovery failed: %w", err)
 	}
 
-	if err := cmdoutput.WriteHuman(cmd.OutOrStdout(), result); err != nil {
+	if err := cmdoutput.WriteHuman(
+		cmd.OutOrStdout(),
+		result,
+	); err != nil {
 		return fmt.Errorf("write discovery result: %w", err)
 	}
 
