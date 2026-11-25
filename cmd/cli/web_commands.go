@@ -9,6 +9,7 @@ import (
 	"domain-search/internal/discovery"
 	"domain-search/models"
 	"domain-search/pkg/logger"
+	"domain-search/cmd/output"
 
 	"github.com/spf13/cobra"
 )
@@ -85,19 +86,20 @@ func NewDomainsCommandForServer(use, serverName string) *cobra.Command {
 
 			var lines []string
 
-			for _, domain := range domains {
-				line := fmt.Sprintf(
-					"%s (%s)",
-					domain.Name,
-					domain.Source,
-				)
-
-				if len(domain.Aliases) > 0 {
-					line += " [aliases: " +
-						strings.Join(domain.Aliases, ", ") + "]"
+			for i, domain := range domains {
+				if i > 0 {
+					lines = append(lines, "")
 				}
 
-				lines = append(lines, line)
+				lines = append(lines,
+					fmt.Sprintf("Domain: %s", output.DisplayValue(domain.Name)),
+					fmt.Sprintf("Server: %s", output.DisplayValue(domain.Source)),
+					fmt.Sprintf("Configuration: %s", output.DisplayValue(domain.ConfigPath)),
+					fmt.Sprintf("Proxy Target: %s", output.DisplayValue(domain.ProxyTarget)),
+					fmt.Sprintf("SSL Certificate: %s", output.DisplayValue(domain.SSLCertificate)),
+					fmt.Sprintf("Aliases: %s", output.DisplayList(domain.Aliases)),
+					fmt.Sprintf("Ports: %s", output.DisplayPorts(domain.Ports)),
+				)
 			}
 
 			if len(failures) > 0 {

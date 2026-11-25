@@ -1,6 +1,7 @@
 package output
 
 import (
+	"domain-search/models"
 	"domain-search/pkg/system"
 	"fmt"
 	"io"
@@ -26,7 +27,7 @@ func DisplayList(values []string) string {
 	return strings.Join(values, ", ")
 }
 
-func displayPorts(ports []int) string {
+func DisplayPorts(ports []int) string {
 	if len(ports) == 0 {
 		return "None reported"
 	}
@@ -153,4 +154,18 @@ func writeProcessMemory(w io.Writer) {
 		fmt.Sprintf("%.2f MB", memory.HeapSysMB))
 
 	fmt.Fprintln(w)
+}
+
+func FormatDomain(domain models.Domain) string {
+	var b strings.Builder
+
+	fmt.Fprintf(&b, "Domain: %s\n", DisplayValue(domain.Name))
+	fmt.Fprintf(&b, "Server: %s\n", DisplayValue(domain.Source))
+	fmt.Fprintf(&b, "Configuration: %s\n", DisplayValue(domain.ConfigPath))
+	fmt.Fprintf(&b, "Proxy Target: %s\n", DisplayValue(domain.ProxyTarget))
+	fmt.Fprintf(&b, "SSL Certificate: %s\n", DisplayValue(domain.SSLCertificate))
+	fmt.Fprintf(&b, "Aliases: %s\n", DisplayList(domain.Aliases))
+	fmt.Fprintf(&b, "Ports: %s\n", DisplayPorts(domain.Ports))
+
+	return b.String()
 }

@@ -189,7 +189,7 @@ func writeWebsites(w io.Writer, r models.Result, sym symbols) {
 		rows = append(rows, []cell{
 			plain(truncate(DisplayValue(displayName), maxDomainLen, sym.ellipsis)),
 			plain(DisplayValue(d.Source)),
-			plain(displayPorts(d.Ports)),
+			plain(DisplayPorts(d.Ports)),
 			ssl,
 			dnsCell(d.DNS.Status, sym),
 		})
