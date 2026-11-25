@@ -209,7 +209,7 @@ func writeWebsites(w io.Writer, r models.Result, sym symbols) {
 			kv(w, 4, 18, "Website name", DisplayValue(d.WebsiteName))
 			kv(w, 4, 18, "Status", DisplayValue(d.Status))
 			kv(w, 4, 18, "Hostname", DisplayValue(d.Hostname))
-			kv(w, 4, 18, "Bindings", DisplayList(d.Binding))
+			kv(w, 4, 18, "Bindings", DisplayList(uniqueStrings(d.Binding)))
 			kv(w, 4, 18, "Physical path", DisplayValue(d.Path))
 		}
 

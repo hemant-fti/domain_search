@@ -5,6 +5,7 @@ import (
 	"domain-search/models"
 	"fmt"
 	"net"
+	"net/netip"
 	"os"
 	"os/user"
 	"runtime"
@@ -328,21 +329,21 @@ func CollectNetworkInfo(ctx context.Context) (models.NetworkInfo, error) {
 
 	interfaces, err := net.Interfaces()
 	if err != nil {
-		return models.NetworkInfo{}, fmt.Errorf("collect network interfaces: %w", err)
+		return models.NetworkInfo{}, fmt.Errorf(
+			"collect network interfaces: %w", err,
+		)
 	}
 
-	var ipv4, ipv6 []string
-	mac := ""
-	seen := make(map[string]bool)
+	var result models.NetworkInfo
 
 	for _, iface := range interfaces {
+		if err := ctx.Err(); err != nil {
+			return models.NetworkInfo{}, err
+		}
+
 		if iface.Flags&net.FlagUp == 0 ||
 			iface.Flags&net.FlagLoopback != 0 {
 			continue
-		}
-
-		if mac == "" && len(iface.HardwareAddr) > 0 {
-			mac = iface.HardwareAddr.String()
 		}
 
 		addresses, err := iface.Addrs()
@@ -351,30 +352,36 @@ func CollectNetworkInfo(ctx context.Context) (models.NetworkInfo, error) {
 		}
 
 		for _, address := range addresses {
-			ip, _, err := net.ParseCIDR(address.String())
-			if err != nil || ip.IsLoopback() {
+			prefix, err := netip.ParsePrefix(address.String())
+			if err != nil {
 				continue
 			}
 
-			value := ip.String()
-			if seen[value] {
+			ip := prefix.Addr().Unmap()
+
+			if !ip.IsValid() ||
+				ip.IsLoopback() ||
+				ip.IsUnspecified() ||
+				ip.IsLinkLocalUnicast() {
 				continue
 			}
-			seen[value] = true
 
-			if ip.To4() != nil {
-				ipv4 = append(ipv4, value)
-			} else {
-				ipv6 = append(ipv6, value)
+			if ip.Is4() && len(result.IPv4) == 0 {
+				result.IPv4 = append(result.IPv4, ip.String())
 			}
+
+			if ip.Is6() && len(result.IPv6) == 0 {
+				result.IPv6 = append(result.IPv6, ip.String())
+			}
+		}
+
+		if len(result.IPv4) > 0 || len(result.IPv6) > 0 {
+			result.MAC = iface.HardwareAddr.String()
+			break
 		}
 	}
 
-	return models.NetworkInfo{
-		IPv4: ipv4,
-		IPv6: ipv6,
-		MAC:  mac,
-	}, nil
+	return result, nil
 }
 
 func CollectUptime(ctx context.Context) (uint64, error) {

@@ -109,3 +109,26 @@ func scanStatusLabel(status string) string {
 		return DisplayValue(status)
 	}
 }
+
+func uniqueStrings(values []string) []string {
+	seen := make(map[string]struct{}, len(values))
+	result := make([]string, 0, len(values))
+
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+
+		key := strings.ToLower(value)
+
+		if _, exists := seen[key]; exists {
+			continue
+		}
+
+		seen[key] = struct{}{}
+		result = append(result, value)
+	}
+
+	return result
+}
