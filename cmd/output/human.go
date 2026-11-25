@@ -1,542 +1,389 @@
 package output
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"strings"
-	"unicode/utf8"
-
-	"github.com/fatih/color"
 
 	"domain-search/internal/discovery"
 	"domain-search/models"
+	"domain-search/pkg/system"
 )
-
-// Options controls how the human-readable report is rendered.
-type Options struct {
-	Verbose bool // show config paths, doc roots, proxy targets, aliases
-	ASCII   bool // force ASCII symbols (legacy consoles, log files)
-}
-
-type symbols struct {
-	ok, warn, fail, up, down, full, empty, ellipsis, dash string
-}
-
-var (
-	unicodeSymbols = symbols{"✔", "⚠", "✖", "●", "○", "█", "░", "…", "—"}
-)
-
-var (
-	bold   = color.New(color.Bold).SprintFunc()
-	dim    = color.New(color.Faint).SprintFunc()
-	green  = color.New(color.FgGreen).SprintFunc()
-	yellow = color.New(color.FgYellow).SprintFunc()
-	red    = color.New(color.FgRed).SprintFunc()
-	cyan   = color.New(color.FgCyan, color.Bold).SprintFunc()
-)
-
-type styleFunc func(a ...interface{}) string
 
 const (
-	ruleWidth    = 64
-	keyWidth     = 16
-	maxDomainLen = 38
+	ruleWidth      = 64
+	keyWidth       = 16
+	detailIndent   = 4
+	detailKeyWidth = 18
+	barWidth       = 20
+	maxDomainLen   = 38
 )
 
-// WriteHuman renders a human-readable scan report. It only formats;
-// persisting the result is the caller's responsibility.
-func WriteHuman(out io.Writer, result models.Result) error {
+// DNS statuses. Move these into package models so producer and renderer share them.
+const (
+	dnsMatches    = "matches_server"
+	dnsElsewhere  = "resolved_other_ip"
+	dnsUnresolved = "unresolved"
+)
+
+type renderer struct {
+	w    io.Writer
+	sym  symbols
+	opts Options
+}
+
+func newRenderer(w io.Writer, opts Options) *renderer {
+	return &renderer{w: w, sym: symbolsFor(opts), opts: opts}
+}
+
+// render builds the report in memory and writes it once, so callers get a
+// real error instead of a half-written report.
+func render(out io.Writer, opts Options, build func(*renderer)) error {
 	var b strings.Builder
-
-	writeHeader(&b, result)
-	counts := dnsCounts(result)
-	writeSummary(&b, result, counts, unicodeSymbols)
-	writeWarnings(&b, result, unicodeSymbols)
-	writeServices(&b, result, unicodeSymbols)
-	writeWebsites(&b, result, unicodeSymbols)
-	writeSystem(&b, result, unicodeSymbols)
-
-	// Runtime memory consumption
-	writeProcessMemory(&b)
+	build(newRenderer(&b, opts))
 
 	if _, err := io.WriteString(out, b.String()); err != nil {
-		return fmt.Errorf("write human-readable output: %w", err)
+		return fmt.Errorf("write report: %w", err)
 	}
-
 	return nil
 }
 
-// ---------- sections ----------
+// ---------- public API ----------
 
-func writeHeader(w io.Writer, r models.Result) {
-	fmt.Fprintln(w)
-	writeReportTitle(w, "Server Discovery Report")
+// WriteHuman renders the full scan report. It only formats; persisting
+// the result is the caller's responsibility.
+func WriteHuman(out io.Writer, result models.Result, opts Options) error {
+	return render(out, opts, func(r *renderer) {
+		r.header(result)
+		r.summary(totalDomains(result), dnsCounts(result.Domains))
+		r.warnings(result.Warnings)
+		r.services(result)
+		r.websites(result.Domains)
+		r.system(result)
+		r.processMemory()
+	})
+}
 
-	host := DisplayValue(r.Server.Hostname)
-	ip := DisplayValue(r.Server.PrimaryIP)
-
-	fmt.Fprintf(w, "  %s %s %s\n", bold(host), dim("·"), ip)
-
-	meta := "Status: " + scanStatusLabel(r.Status)
-	if !r.ScannedAt.IsZero() {
-		meta += "  ·  " + r.ScannedAt.Format("02 Jan 2006, 03:04 PM MST")
+func WriteDomains(out io.Writer, domains []models.Domain) error {
+	results := make([]models.DomainResult, len(domains))
+	for i, d := range domains {
+		results[i] = models.DomainResult{Domain: d}
 	}
 
-	fmt.Fprintf(w, "  %s\n\n", dim(meta))
+	return render(out, Options{}, func(r *renderer) {
+		r.commandHeader("Server Discovery Report")
+		r.summary(len(results), dnsCounts(results))
+		r.websites(results)
+	})
+}
+
+func WriteSystemHeader(w io.Writer) {
+	newRenderer(w, Options{}).commandHeader("System Information")
+}
+
+func WriteCPU(out io.Writer, info models.CPUInfo) error {
+	return render(out, Options{}, func(r *renderer) {
+		r.commandHeader("System Information")
+		r.cpu(info.Model, info.Cores, info.Threads)
+	})
+}
+
+func WriteMemory(out io.Writer, info models.MemoryInfo) error {
+	return render(out, Options{}, func(r *renderer) {
+		r.commandHeader("System Information")
+		r.memory(info)
+	})
+}
+
+func WriteUptime(out io.Writer, seconds uint64) error {
+	return render(out, Options{}, func(r *renderer) {
+		r.commandHeader("System Information")
+		r.uptime(seconds)
+	})
+}
+
+func WriteDisk(out io.Writer, info models.DiskInfo) error {
+	return render(out, Options{}, func(r *renderer) {
+		r.commandHeader("System Information")
+		r.disk(info)
+	})
+}
+
+// WriteSystem renders all system information under one common header.
+func WriteSystem(out io.Writer, info models.SystemInfo) error {
+	return render(out, Options{}, func(r *renderer) {
+		r.commandHeader("System Information")
+		r.cpu(info.CPUModel, info.Cores, info.Threads)
+		r.memory(info.Memory)
+		r.uptime(info.Uptime)
+		r.disk(info.Disk)
+	})
+}
+
+// ---------- building blocks ----------
+
+func (r *renderer) section(title string) {
+	fmt.Fprintf(r.w, "  %s\n", cyan(title))
+}
+
+func (r *renderer) kv(indent, width int, key, value string) {
+	fmt.Fprintf(r.w, "%s%s %s\n",
+		strings.Repeat(" ", indent), dim(fmt.Sprintf("%-*s", width, key)), value)
+}
+
+func (r *renderer) title(title string) {
+	fmt.Fprintf(r.w, "  %s  %s\n", cyan("hostscope"), dim("· "+title))
+	fmt.Fprintf(r.w, "  %s\n", dim(strings.Repeat(r.sym.rule, ruleWidth)))
+}
+
+func (r *renderer) commandHeader(title string) {
+	fmt.Fprintln(r.w)
+	r.title(title)
+	fmt.Fprintln(r.w)
+}
+
+// ---------- scan report sections ----------
+
+func (r *renderer) header(res models.Result) {
+	fmt.Fprintln(r.w)
+	r.title("Server Discovery Report")
+
+	fmt.Fprintf(r.w, "  %s %s %s\n",
+		bold(DisplayValue(res.Server.Hostname)), dim("·"), DisplayValue(res.Server.PrimaryIP))
+
+	meta := "Status: " + scanStatusLabel(res.Status)
+	if !res.ScannedAt.IsZero() {
+		meta += "  ·  " + res.ScannedAt.Format("02 Jan 2006, 03:04 PM MST")
+	}
+	fmt.Fprintf(r.w, "  %s\n\n", dim(meta))
 }
 
 type dnsTally struct{ matched, elsewhere, unresolved int }
 
-func dnsCounts(r models.Result) dnsTally {
+func (t dnsTally) checked() int { return t.matched + t.elsewhere + t.unresolved }
+
+func dnsCounts(domains []models.DomainResult) dnsTally {
 	var t dnsTally
-	for _, d := range r.Domains {
+	for _, d := range domains {
 		switch d.DNS.Status {
-		case "matches_server":
+		case dnsMatches:
 			t.matched++
-		case "resolved_other_ip":
+		case dnsElsewhere:
 			t.elsewhere++
-		case "unresolved":
+		case dnsUnresolved:
 			t.unresolved++
 		}
 	}
 	return t
 }
 
-func writeSummary(w io.Writer, r models.Result, t dnsTally, sym symbols) {
-	total := len(r.Domains)
-	if r.TotalDomains > total {
-		total = r.TotalDomains
-	}
+func totalDomains(res models.Result) int {
+	return max(len(res.Domains), res.TotalDomains)
+}
 
-	section(w, "SUMMARY")
+func (r *renderer) summary(total int, t dnsTally) {
+	r.section("SUMMARY")
 
-	parts := []string{
-		fmt.Sprintf("%s %d websites", dim(sym.dash), total),
-		fmt.Sprintf("%s %d DNS match", green(sym.ok), t.matched),
+	parts := []string{fmt.Sprintf("%s %d websites", dim(r.sym.dash), total)}
+	if t.checked() > 0 { // skip DNS stats when no DNS lookup ran
+		parts = append(parts, fmt.Sprintf("%s %d DNS match", green(r.sym.ok), t.matched))
 	}
 	if t.elsewhere > 0 {
-		parts = append(parts, fmt.Sprintf("%s %d point elsewhere", yellow(sym.warn), t.elsewhere))
+		parts = append(parts, fmt.Sprintf("%s %d point elsewhere", yellow(r.sym.warn), t.elsewhere))
 	}
 	if t.unresolved > 0 {
-		parts = append(parts, fmt.Sprintf("%s %d unresolved", red(sym.fail), t.unresolved))
+		parts = append(parts, fmt.Sprintf("%s %d unresolved", red(r.sym.fail), t.unresolved))
 	}
-	fmt.Fprintf(w, "  %s\n\n", strings.Join(parts, "   "))
+	fmt.Fprintf(r.w, "  %s\n\n", strings.Join(parts, "   "))
 }
 
-func writeWarnings(w io.Writer, r models.Result, sym symbols) {
-	if len(r.Warnings) == 0 {
+func (r *renderer) warnings(warnings []string) {
+	if len(warnings) == 0 {
 		return
 	}
 
-	section(w, fmt.Sprintf("WARNINGS (%d)", len(r.Warnings)))
-	for _, warning := range r.Warnings {
-		msg := discovery.FriendlyErrorMessage(fmt.Errorf("%s", warning), "")
-		fmt.Fprintf(w, "  %s %s\n", yellow(sym.warn), msg)
+	r.section(fmt.Sprintf("WARNINGS (%d)", len(warnings)))
+	for _, w := range warnings {
+		msg := discovery.FriendlyErrorMessage(errors.New(w), "")
+		fmt.Fprintf(r.w, "  %s %s\n", yellow(r.sym.warn), msg)
 	}
-	fmt.Fprintln(w)
+	fmt.Fprintln(r.w)
 }
 
-func writeServices(w io.Writer, r models.Result, sym symbols) {
-	section(w, "SERVICES")
+func (r *renderer) services(res models.Result) {
+	r.section("SERVICES")
 
-	if len(r.Servers) == 0 {
-		fmt.Fprintf(w, "  %s\n\n", dim("No web server services detected."))
+	if len(res.Servers) == 0 {
+		fmt.Fprintf(r.w, "  %s\n\n", dim("No web server services detected."))
 		return
 	}
 
-	nameWidth := 0
-	for _, s := range r.Servers {
-		if n := utf8.RuneCountInString(DisplayValue(s.Server)); n > nameWidth {
-			nameWidth = n
-		}
+	width := 0
+	for _, s := range res.Servers {
+		width = max(width, len([]rune(DisplayValue(s.Server))))
 	}
 
-	for _, s := range r.Servers {
-		name := DisplayValue(s.Server)
-		pad := strings.Repeat(" ", nameWidth-utf8.RuneCountInString(name))
+	for _, s := range res.Servers {
+		name := fmt.Sprintf("%-*s", width, DisplayValue(s.Server))
 		if s.Running {
-			fmt.Fprintf(w, "  %s%s  %s %s\n", name, pad, green(sym.up), green("running"))
+			fmt.Fprintf(r.w, "  %s  %s %s\n", name, green(r.sym.up), green("running"))
 		} else {
-			fmt.Fprintf(w, "  %s%s  %s %s\n", name, pad, dim(sym.down), dim("not running"))
+			fmt.Fprintf(r.w, "  %s  %s %s\n", name, dim(r.sym.down), dim("not running"))
 		}
 	}
-	fmt.Fprintln(w)
+	fmt.Fprintln(r.w)
 }
 
-func writeWebsites(w io.Writer, r models.Result, sym symbols) {
-	section(w, fmt.Sprintf("WEBSITES (%d)", len(r.Domains)))
+func domainName(d models.DomainResult) string {
+	if strings.EqualFold(d.Source, "iis") && strings.TrimSpace(d.Name) == "" {
+		return d.WebsiteName
+	}
+	return d.Name
+}
 
-	if len(r.Domains) == 0 {
-		fmt.Fprintf(w, "  %s\n\n", dim("No website configurations were discovered."))
+func (r *renderer) websites(domains []models.DomainResult) {
+	r.section(fmt.Sprintf("WEBSITES (%d)", len(domains)))
+
+	if len(domains) == 0 {
+		fmt.Fprintf(r.w, "  %s\n\n", dim("No website configurations were discovered."))
 		return
 	}
 
 	header := []string{"DOMAIN / WEBSITE", "SERVER", "PORTS", "SSL", "DNS"}
-	rows := make([][]cell, 0, len(r.Domains))
+	rows := make([][]cell, 0, len(domains))
 
-	for _, d := range r.Domains {
-		ssl := cell{dim(sym.dash), sym.dash}
+	for _, d := range domains {
+		ssl := cell{dim(r.sym.dash), r.sym.dash}
 		if strings.TrimSpace(d.SSLCertificate) != "" {
-			ssl = cell{green(sym.ok), sym.ok}
-		}
-
-		displayName := d.Name
-		if strings.EqualFold(d.Source, "iis") {
-			if strings.TrimSpace(displayName) == "" {
-				displayName = d.WebsiteName
-			}
+			ssl = cell{green(r.sym.ok), r.sym.ok}
 		}
 
 		rows = append(rows, []cell{
-			plain(truncate(DisplayValue(displayName), maxDomainLen, sym.ellipsis)),
+			plain(truncate(DisplayValue(domainName(d)), maxDomainLen, r.sym.ellipsis)),
 			plain(DisplayValue(d.Source)),
 			plain(DisplayPorts(d.Ports)),
 			ssl,
-			dnsCell(d.DNS.Status, sym),
+			r.dnsCell(d.DNS.Status),
 		})
 	}
+	writeTable(r.w, header, rows)
 
-	// Always display the website table.
-	writeTable(w, header, rows)
-
-	// Display detailed website information.
-	for _, d := range r.Domains {
-		displayName := d.Name
-		if strings.EqualFold(d.Source, "iis") && strings.TrimSpace(displayName) == "" {
-			displayName = d.WebsiteName
+	if r.opts.Verbose {
+		for _, d := range domains {
+			r.websiteDetails(d)
 		}
-
-		fmt.Fprintf(w, "\n  %s\n", bold(DisplayValue(displayName)))
-
-		if strings.EqualFold(d.Source, "iis") {
-			kv(w, 4, 18, "Website ID", DisplayValue(d.ID))
-			kv(w, 4, 18, "Website name", DisplayValue(d.WebsiteName))
-			kv(w, 4, 18, "Status", DisplayValue(d.Status))
-			kv(w, 4, 18, "Hostname", DisplayValue(d.Hostname))
-			kv(w, 4, 18, "Bindings", DisplayList(uniqueStrings(d.Binding)))
-			kv(w, 4, 18, "Physical path", DisplayValue(d.Path))
-		}
-
-		kv(w, 4, 18, "Config file", DisplayValue(d.ConfigPath))
-		kv(w, 4, 18, "Proxy target", DisplayValue(d.ProxyTarget))
-		kv(w, 4, 18, "SSL certificate", DisplayValue(d.SSLCertificate))
-		kv(w, 4, 18, "Aliases", DisplayList(d.Aliases))
 	}
-
-	fmt.Fprintln(w)
+	fmt.Fprintln(r.w)
 }
 
-func truncate(s string, max int, ellipsis string) string {
-	if utf8.RuneCountInString(s) <= max {
-		return s
+func (r *renderer) websiteDetails(d models.DomainResult) {
+	fmt.Fprintf(r.w, "\n  %s\n", bold(DisplayValue(domainName(d))))
+
+	kv := func(key, value string) { r.kv(detailIndent, detailKeyWidth, key, value) }
+
+	if strings.EqualFold(d.Source, "iis") {
+		kv("Website ID", DisplayValue(d.ID))
+		kv("Website name", DisplayValue(d.WebsiteName))
+		kv("Status", DisplayValue(d.Status))
+		kv("Hostname", DisplayValue(d.Hostname))
+		kv("Bindings", DisplayList(uniqueStrings(d.Binding)))
+		kv("Physical path", DisplayValue(d.Path))
 	}
-
-	runes := []rune(s)
-	return string(runes[:max-utf8.RuneCountInString(ellipsis)]) + ellipsis
+	kv("Config file", DisplayValue(d.ConfigPath))
+	kv("Proxy target", DisplayValue(d.ProxyTarget))
+	kv("SSL certificate", DisplayValue(d.SSLCertificate))
+	kv("Aliases", DisplayList(d.Aliases))
 }
 
-// cell holds styled text and its plain representation.
-type cell struct {
-	styled string
-	plain  string
-}
-
-func plain(s string) cell {
-	return cell{
-		styled: s,
-		plain:  s,
-	}
-}
-
-func dnsCell(status string, sym symbols) cell {
+func (r *renderer) dnsCell(status string) cell {
+	s := r.sym
 	switch status {
-	case "matches_server":
-		return cell{green(sym.ok + " matches"), sym.ok + " matches"}
-	case "resolved_other_ip":
-		return cell{yellow(sym.warn + " points elsewhere"), sym.warn + " points elsewhere"}
-	case "unresolved":
-		return cell{red(sym.fail + " unresolved"), sym.fail + " unresolved"}
+	case dnsMatches:
+		return cell{green(s.ok + " matches"), s.ok + " matches"}
+	case dnsElsewhere:
+		return cell{yellow(s.warn + " points elsewhere"), s.warn + " points elsewhere"}
+	case dnsUnresolved:
+		return cell{red(s.fail + " unresolved"), s.fail + " unresolved"}
 	default:
-		return cell{dim(sym.dash), sym.dash}
+		return cell{dim(s.dash), s.dash}
 	}
 }
 
-func writeTable(w io.Writer, header []string, rows [][]cell) {
-	widths := make([]int, len(header))
+// ---------- system sections ----------
 
-	for i, h := range header {
-		widths[i] = utf8.RuneCountInString(h)
-	}
-
-	for _, row := range rows {
-		for i, c := range row {
-			if n := utf8.RuneCountInString(c.plain); n > widths[i] {
-				widths[i] = n
-			}
-		}
-	}
-
-	var line strings.Builder
-
-	for i, h := range header {
-		line.WriteString(dim(h))
-		line.WriteString(strings.Repeat(
-			" ",
-			widths[i]-utf8.RuneCountInString(h)+3,
-		))
-	}
-
-	fmt.Fprintf(w, "  %s\n", strings.TrimRight(line.String(), " "))
-
-	for _, row := range rows {
-		line.Reset()
-
-		for i, c := range row {
-			line.WriteString(c.styled)
-			line.WriteString(strings.Repeat(
-				" ",
-				widths[i]-utf8.RuneCountInString(c.plain)+3,
-			))
-		}
-
-		fmt.Fprintf(w, "  %s\n", strings.TrimRight(line.String(), " "))
-	}
-}
-
-func writeSystem(w io.Writer, r models.Result, sym symbols) {
-	s := r.System
-
-	section(w, "SYSTEM")
+func (r *renderer) system(res models.Result) {
+	s := res.System
 
 	osName := strings.TrimSpace(s.ServerOS)
-	osVersion := strings.TrimSpace(s.OSVersion)
-
 	if osName == "" {
-		osName = strings.TrimSpace(r.Server.OperatingSystem)
+		osName = strings.TrimSpace(res.Server.OperatingSystem)
 	}
 
-	kv(w, 2, keyWidth, "OS", DisplayValue(osName))
-	kv(w, 2, keyWidth, "Version", DisplayValue(osVersion))
-	kv(w, 2, keyWidth, "Architecture", DisplayValue(s.Architecture))
+	r.section("SYSTEM")
+	kv := func(key, value string) { r.kv(2, keyWidth, key, value) }
 
-	kv(w, 2, keyWidth, "CPU", fmt.Sprintf("%s (%s cores / %s threads)",
-		DisplayValue(s.CPUModel),
-		formatCount(s.Cores),
-		formatCount(s.Threads),
-	))
+	kv("OS", DisplayValue(osName))
+	kv("Version", DisplayValue(s.OSVersion))
+	kv("Architecture", DisplayValue(s.Architecture))
+	kv("CPU", cpuSummary(s.CPUModel, s.Cores, s.Threads))
+	kv("Uptime", FormatUptime(s.Uptime))
+	kv("User", DisplayValue(s.CurrentUser))
+	kv("Time zone", DisplayValue(s.Timezone))
+	kv("IPv4", DisplayList(s.IPv4))
+	kv("IPv6", DisplayList(s.IPv6))
+	kv("MAC", DisplayValue(s.MAC))
+	fmt.Fprintln(r.w)
 
-	kv(w, 2, keyWidth, "Uptime", FormatUptime(s.Uptime))
-	kv(w, 2, keyWidth, "User", DisplayValue(s.CurrentUser))
-	kv(w, 2, keyWidth, "Time zone", DisplayValue(s.Timezone))
-	kv(w, 2, keyWidth, "IPv4", DisplayList(s.IPv4))
-	kv(w, 2, keyWidth, "IPv6", DisplayList(s.IPv6))
-	kv(w, 2, keyWidth, "MAC", DisplayValue(s.MAC))
-
-	fmt.Fprintln(w)
-
-	fmt.Fprintf(w, "  %-*s %s  %s / %s\n", keyWidth-2, "Disk",
-		usageBar(s.Disk.UsedGB, s.Disk.TotalGB, 20, sym),
-		formatStorage(s.Disk.UsedGB),
-		formatStorage(s.Disk.TotalGB),
-	)
-
-	fmt.Fprintf(w, "  %-*s %s  %s / %s\n", keyWidth-2, "Memory",
-		usageBar(s.Memory.UsedGB, s.Memory.TotalGB, 20, sym),
-		formatStorage(s.Memory.UsedGB),
-		formatStorage(s.Memory.TotalGB),
-	)
-
-	fmt.Fprintln(w)
+	r.usageLine("Disk", s.Disk.UsedGB, s.Disk.TotalGB)
+	r.usageLine("Memory", s.Memory.UsedGB, s.Memory.TotalGB)
+	fmt.Fprintln(r.w)
 }
 
-// ---------- building blocks ----------
-
-func section(w io.Writer, title string) {
-	fmt.Fprintf(w, "  %s\n", cyan(title))
+func (r *renderer) usageLine(label string, used, total float64) {
+	fmt.Fprintf(r.w, "  %-*s %s  %s / %s\n", keyWidth-2, label,
+		usageBar(used, total, barWidth, r.sym), formatStorage(used), formatStorage(total))
 }
 
-func kv(w io.Writer, indent, width int, key, value string) {
-	fmt.Fprintf(w, "%s%s %s\n",
-		strings.Repeat(" ", indent),
-		dim(fmt.Sprintf("%-*s", width, key)),
-		value)
+func (r *renderer) cpu(model string, cores, threads int) {
+	r.section("CPU")
+	r.kv(2, keyWidth, "Model", DisplayValue(model))
+	r.kv(2, keyWidth, "Cores", formatCount(cores))
+	r.kv(2, keyWidth, "Threads", formatCount(threads))
+	fmt.Fprintln(r.w)
 }
 
-// cell holds styled text plus its plain form, so column widths are
-// computed from visible characters rather than ANSI escape codes.
-
-type number interface {
-	~int | ~int64 | ~float32 | ~float64
+func (r *renderer) memory(info models.MemoryInfo) {
+	r.section("MEMORY")
+	r.kv(2, keyWidth, "Total", formatStorage(info.TotalGB))
+	r.kv(2, keyWidth, "Used", formatStorage(info.UsedGB))
+	r.kv(2, keyWidth, "Available", formatStorage(info.AvailableGB))
+	r.kv(2, keyWidth, "Free", formatStorage(info.FreeGB))
+	r.processMemory()
 }
 
-func usageBar[T number](used, total T, width int, sym symbols) string {
-	if total <= 0 {
-		return dim("n/a")
-	}
-
-	pct := float64(used) / float64(total) * 100
-	if pct < 0 {
-		pct = 0
-	}
-	if pct > 100 {
-		pct = 100
-	}
-
-	filled := int(pct / 100 * float64(width))
-	bar := strings.Repeat(sym.full, filled) + strings.Repeat(sym.empty, width-filled)
-
-	style := styleFunc(green)
-	switch {
-	case pct >= 90:
-		style = red
-	case pct >= 75:
-		style = yellow
-	}
-
-	return fmt.Sprintf("%s %3.0f%%", style(bar), pct)
+func (r *renderer) disk(info models.DiskInfo) {
+	r.section("DISK")
+	r.kv(2, keyWidth, "Total", formatStorage(info.TotalGB))
+	r.kv(2, keyWidth, "Used", formatStorage(info.UsedGB))
+	r.kv(2, keyWidth, "Available", formatStorage(info.AvailableGB))
+	r.kv(2, keyWidth, "Free", formatStorage(info.FreeGB))
+	fmt.Fprintln(r.w)
 }
 
-func WriteDomains(w io.Writer, domains []models.Domain) error {
-	result := models.Result{
-		Status:       "completed",
-		TotalDomains: len(domains),
-		Domains:      make([]models.DomainResult, 0, len(domains)),
-	}
-
-	for _, domain := range domains {
-		result.Domains = append(result.Domains, models.DomainResult{
-			Domain: domain,
-		})
-	}
-
-	writeCommandHeader(w, "Server Discovery Report")
-
-	writeSummary(w, result, dnsCounts(result), unicodeSymbols)
-	writeWebsites(w, result, unicodeSymbols)
-
-	return nil
+func (r *renderer) uptime(seconds uint64) {
+	r.section("UPTIME")
+	r.kv(2, keyWidth, "Uptime", FormatUptime(seconds))
+	fmt.Fprintln(r.w)
 }
 
-func writeCommandHeader(w io.Writer, title string) {
-	fmt.Fprintln(w)
-	writeReportTitle(w, title)
-	fmt.Fprintln(w)
-}
+func (r *renderer) processMemory() {
+	m := system.GetProcessMemory()
 
-func writeCommandSection(w io.Writer, title string) {
-	section(w, title)
-}
-
-func writeReportTitle(w io.Writer, title string) {
-	fmt.Fprintf(w, "  %s  %s\n",
-		cyan("hostscope"),
-		dim("· "+title),
-	)
-	fmt.Fprintf(w, "  %s\n", dim(strings.Repeat("─", ruleWidth)))
-}
-
-func writeCPUSection(w io.Writer, info models.CPUInfo) {
-	writeCommandSection(w, "CPU")
-	kv(w, 2, keyWidth, "Model", DisplayValue(info.Model))
-	kv(w, 2, keyWidth, "Cores", formatCount(info.Cores))
-	kv(w, 2, keyWidth, "Threads", formatCount(info.Threads))
-	fmt.Fprintln(w)
-}
-
-func writeMemorySection(w io.Writer, info models.MemoryInfo) {
-	writeCommandSection(w, "MEMORY")
-	kv(w, 2, keyWidth, "Total", formatStorage(info.TotalGB))
-	kv(w, 2, keyWidth, "Used", formatStorage(info.UsedGB))
-	kv(w, 2, keyWidth, "Available", formatStorage(info.AvailableGB))
-	kv(w, 2, keyWidth, "Free", formatStorage(info.FreeGB))
-
-	writeProcessMemory(w)
-	fmt.Fprintln(w)
-}
-
-func writeUptimeSection(w io.Writer, seconds uint64) {
-	writeCommandSection(w, "UPTIME")
-	kv(w, 2, keyWidth, "Uptime", FormatUptime(seconds))
-	fmt.Fprintln(w)
-}
-
-func writeDiskSection(w io.Writer, info models.DiskInfo) {
-	writeCommandSection(w, "DISK")
-	kv(w, 2, keyWidth, "Total", formatStorage(info.TotalGB))
-	kv(w, 2, keyWidth, "Used", formatStorage(info.UsedGB))
-	kv(w, 2, keyWidth, "Available", formatStorage(info.AvailableGB))
-	kv(w, 2, keyWidth, "Free", formatStorage(info.FreeGB))
-	fmt.Fprintln(w)
-}
-
-// WriteSystemHeader prints the common system report header.
-func WriteSystemHeader(w io.Writer) {
-	writeCommandHeader(w, "System Information")
-}
-
-// Exported section formatters for combined output.
-func WriteCPUSection(w io.Writer, info models.CPUInfo) {
-	writeCPUSection(w, info)
-}
-
-func WriteMemorySection(w io.Writer, info models.MemoryInfo) {
-	writeMemorySection(w, info)
-}
-
-func WriteUptimeSection(w io.Writer, seconds uint64) {
-	writeUptimeSection(w, seconds)
-}
-
-func WriteDiskSection(w io.Writer, info models.DiskInfo) {
-	writeDiskSection(w, info)
-}
-
-// Standalone command formatters.
-
-func WriteCPU(w io.Writer, info models.CPUInfo) error {
-	WriteSystemHeader(w)
-	writeCPUSection(w, info)
-	return nil
-}
-
-func WriteMemory(w io.Writer, info models.MemoryInfo) error {
-	WriteSystemHeader(w)
-	writeMemorySection(w, info)
-	return nil
-}
-
-func WriteUptime(w io.Writer, seconds uint64) error {
-	WriteSystemHeader(w)
-	writeUptimeSection(w, seconds)
-	return nil
-}
-
-func WriteDisk(w io.Writer, info models.DiskInfo) error {
-	WriteSystemHeader(w)
-	writeDiskSection(w, info)
-	return nil
-}
-
-// WriteSystem renders all system information using one common header.
-func WriteSystem(w io.Writer, info models.SystemInfo) error {
-	WriteSystemHeader(w)
-
-	writeCommandSection(w, "CPU")
-	kv(w, 2, keyWidth, "Model", DisplayValue(info.CPUModel))
-	kv(w, 2, keyWidth, "Cores", formatCount(info.Cores))
-	kv(w, 2, keyWidth, "Threads", formatCount(info.Threads))
-	fmt.Fprintln(w)
-
-	writeCommandSection(w, "MEMORY")
-	kv(w, 2, keyWidth, "Total", formatStorage(info.Memory.TotalGB))
-	kv(w, 2, keyWidth, "Used", formatStorage(info.Memory.UsedGB))
-	kv(w, 2, keyWidth, "Available", formatStorage(info.Memory.AvailableGB))
-	kv(w, 2, keyWidth, "Free", formatStorage(info.Memory.FreeGB))
-	writeProcessMemory(w)
-	fmt.Fprintln(w)
-
-	writeUptimeSection(w, info.Uptime)
-	writeDiskSection(w, info.Disk)
-
-	return nil
+	r.section("PROCESS MEMORY")
+	r.kv(2, keyWidth, "Heap allocated", fmt.Sprintf("%.2f MB", m.AllocMB))
+	r.kv(2, keyWidth, "Total allocated", fmt.Sprintf("%.2f MB", m.TotalAllocMB))
+	r.kv(2, keyWidth, "Runtime memory", fmt.Sprintf("%.2f MB", m.SysMB))
+	r.kv(2, keyWidth, "Heap reserved", fmt.Sprintf("%.2f MB", m.HeapSysMB))
+	fmt.Fprintln(r.w)
 }
