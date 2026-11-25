@@ -25,6 +25,7 @@ const (
 	dnsMatches    = "matches_server"
 	dnsElsewhere  = "resolved_other_ip"
 	dnsUnresolved = "unresolved"
+	dnsInvalidIP  = "invalid_server_ip"
 )
 
 type renderer struct {
@@ -77,10 +78,6 @@ func WriteDomains(out io.Writer, domains []models.Domain) error {
 	})
 }
 
-func WriteSystemHeader(w io.Writer) {
-	newRenderer(w).commandHeader("System Information")
-}
-
 func WriteCPU(out io.Writer, info models.CPUInfo) error {
 	return render(out, func(r *renderer) {
 		r.commandHeader("System Information")
@@ -109,14 +106,12 @@ func WriteDisk(out io.Writer, info models.DiskInfo) error {
 	})
 }
 
-// WriteSystem renders all system information under one common header.
+// WriteSystem renders the full system report.
 func WriteSystem(out io.Writer, info models.SystemInfo) error {
 	return render(out, func(r *renderer) {
 		r.commandHeader("System Information")
-		r.cpu(info.CPUModel, info.Cores, info.Threads)
-		r.memory(info.Memory)
-		r.uptime(info.Uptime)
-		r.disk(info.Disk)
+		r.systemInfo(info, "")
+		r.processMemory()
 	})
 }
 
@@ -158,9 +153,11 @@ func (r *renderer) header(res models.Result) {
 	fmt.Fprintf(r.w, "  %s\n\n", dim(meta))
 }
 
-type dnsTally struct{ matched, elsewhere, unresolved int }
+type dnsTally struct{ matched, elsewhere, unresolved, invalid int }
 
-func (t dnsTally) checked() int { return t.matched + t.elsewhere + t.unresolved }
+func (t dnsTally) checked() int {
+	return t.matched + t.elsewhere + t.unresolved + t.invalid
+}
 
 func dnsCounts(domains []models.DomainResult) dnsTally {
 	var t dnsTally
@@ -172,6 +169,8 @@ func dnsCounts(domains []models.DomainResult) dnsTally {
 			t.elsewhere++
 		case dnsUnresolved:
 			t.unresolved++
+		case dnsInvalidIP:
+			t.invalid++
 		}
 	}
 	return t
@@ -193,6 +192,9 @@ func (r *renderer) summary(total int, t dnsTally) {
 	}
 	if t.unresolved > 0 {
 		parts = append(parts, fmt.Sprintf("%s %d unresolved", red(r.sym.fail), t.unresolved))
+	}
+	if t.invalid > 0 {
+		parts = append(parts, fmt.Sprintf("%s %d not verified", yellow(r.sym.warn), t.invalid))
 	}
 	fmt.Fprintf(r.w, "  %s\n\n", strings.Join(parts, "   "))
 }
@@ -302,6 +304,8 @@ func (r *renderer) dnsCell(status string) cell {
 		return cell{yellow(s.warn + " points elsewhere"), s.warn + " points elsewhere"}
 	case dnsUnresolved:
 		return cell{red(s.fail + " unresolved"), s.fail + " unresolved"}
+	case dnsInvalidIP:
+		return cell{yellow(s.warn + " not verified"), s.warn + " not verified"}
 	default:
 		return cell{dim(s.dash), s.dash}
 	}
@@ -310,18 +314,22 @@ func (r *renderer) dnsCell(status string) cell {
 // ---------- system sections ----------
 
 func (r *renderer) system(res models.Result) {
-	s := res.System
+	r.systemInfo(res.System, res.Server.OperatingSystem)
+}
 
+func (r *renderer) systemInfo(s models.SystemInfo, fallbackOS string) {
 	osName := strings.TrimSpace(s.ServerOS)
 	if osName == "" {
-		osName = strings.TrimSpace(res.Server.OperatingSystem)
+		osName = strings.TrimSpace(fallbackOS)
 	}
 
 	r.section("SYSTEM")
 	kv := func(key, value string) { r.kv(2, keyWidth, key, value) }
 
+	kv("Hostname", DisplayValue(s.Hostname))
 	kv("OS", DisplayValue(osName))
 	kv("Version", DisplayValue(s.OSVersion))
+	kv("Kernel", DisplayValue(s.Kernel))
 	kv("Architecture", DisplayValue(s.Architecture))
 	kv("CPU", cpuSummary(s.CPUModel, s.Cores, s.Threads))
 	kv("Uptime", FormatUptime(s.Uptime))
@@ -356,6 +364,7 @@ func (r *renderer) memory(info models.MemoryInfo) {
 	r.kv(2, keyWidth, "Used", formatStorage(info.UsedGB))
 	r.kv(2, keyWidth, "Available", formatStorage(info.AvailableGB))
 	r.kv(2, keyWidth, "Free", formatStorage(info.FreeGB))
+	fmt.Fprintln(r.w)
 	r.processMemory()
 }
 
@@ -383,22 +392,4 @@ func (r *renderer) processMemory() {
 	r.kv(2, keyWidth, "Runtime memory", fmt.Sprintf("%.2f MB", m.SysMB))
 	r.kv(2, keyWidth, "Heap reserved", fmt.Sprintf("%.2f MB", m.HeapSysMB))
 	fmt.Fprintln(r.w)
-}
-
-// Section writers for composing custom system reports under one header.
-
-func WriteCPUSection(w io.Writer, info models.CPUInfo) {
-	newRenderer(w).cpu(info.Model, info.Cores, info.Threads)
-}
-
-func WriteMemorySection(w io.Writer, info models.MemoryInfo) {
-	newRenderer(w).memory(info)
-}
-
-func WriteUptimeSection(w io.Writer, seconds uint64) {
-	newRenderer(w).uptime(seconds)
-}
-
-func WriteDiskSection(w io.Writer, info models.DiskInfo) {
-	newRenderer(w).disk(info)
 }

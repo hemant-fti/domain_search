@@ -38,6 +38,7 @@ type commandHistoryRecord struct {
 	Output     json.RawMessage `json:"output,omitempty"`
 	OutputFile string          `json:"output_file,omitempty"`
 }
+
 type commandErrorRecord struct {
 	Command    string    `json:"command,omitempty"`
 	Args       []string  `json:"args,omitempty"`

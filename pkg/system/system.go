@@ -271,6 +271,7 @@ func CollectMemoryInfo(ctx context.Context) (models.MemoryInfo, error) {
 		FreeGB:      float64(info.Free) / bytesPerGB,
 		UsedGB:      float64(info.Used) / bytesPerGB,
 	}, nil
+
 }
 
 // CollectDiskInfo collects disk usage information.

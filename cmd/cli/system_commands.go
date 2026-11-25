@@ -7,6 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"domain-search/cmd/history"
 	"domain-search/cmd/output"
 	"domain-search/models"
 	"domain-search/pkg/logger"
@@ -29,6 +30,9 @@ func NewSystemCPUCommand() *cobra.Command {
 			"threads", info.Threads,
 			"duration", time.Since(startedAt).String(),
 		)
+
+		history.SetCommandResult(ctx, info)
+
 		var human strings.Builder
 		if err := output.WriteCPU(&human, info); err != nil {
 			return models.CommandResult{}, err
@@ -53,6 +57,9 @@ func NewSystemMemoryCommand() *cobra.Command {
 			"used_gb", info.UsedGB,
 			"duration", time.Since(startedAt).String(),
 		)
+
+		history.SetCommandResult(ctx, info)
+
 		var human strings.Builder
 		if err := output.WriteMemory(&human, info); err != nil {
 			return models.CommandResult{}, err
@@ -85,6 +92,8 @@ func NewSystemUptimeCommand() *cobra.Command {
 			"duration", time.Since(startedAt).String(),
 		)
 
+		history.SetCommandResult(ctx, value)
+
 		var human strings.Builder
 		if err := output.WriteUptime(&human, uptime); err != nil {
 			return models.CommandResult{}, err
@@ -99,7 +108,7 @@ func NewDiskUsageCommand() *cobra.Command {
 		startedAt := time.Now()
 		logger.Debug("Disk usage inspection started")
 
-		info, err := system.CollectDiskInfo(ctx, "/")
+		info, err := system.CollectDiskInfo(ctx, "")
 		if err != nil {
 			return models.CommandResult{}, err
 		}
@@ -112,6 +121,8 @@ func NewDiskUsageCommand() *cobra.Command {
 			"duration", time.Since(startedAt).String(),
 		)
 
+		history.SetCommandResult(ctx, info)
+
 		var human strings.Builder
 		if err := output.WriteDisk(&human, info); err != nil {
 			return models.CommandResult{}, err
@@ -121,36 +132,26 @@ func NewDiskUsageCommand() *cobra.Command {
 	})
 }
 
+// runSystemInfo prints the full system report and records the same
+// models.SystemInfo that `scan` collects.
 func runSystemInfo(cmd *cobra.Command) error {
 	ctx := cmd.Context()
 
-	cpuInfo, err := system.CollectCPUInfo(ctx)
+	info, warnings, err := system.GetSysInfo(ctx)
 	if err != nil {
 		return err
 	}
 
-	memoryInfo, err := system.CollectMemoryInfo(ctx)
-	if err != nil {
-		return err
-	}
-
-	uptime, err := system.CollectUptime(ctx)
-	if err != nil {
-		return err
-	}
-
-	diskInfo, err := system.CollectDiskInfo(ctx, "/")
-	if err != nil {
-		return err
-	}
+	history.SetCommandResult(ctx, info)
 
 	var human strings.Builder
+	if err := output.WriteSystem(&human, info); err != nil {
+		return err
+	}
 
-	output.WriteSystemHeader(&human)
-	output.WriteCPUSection(&human, cpuInfo)
-	output.WriteMemorySection(&human, memoryInfo)
-	output.WriteUptimeSection(&human, uptime)
-	output.WriteDiskSection(&human, diskInfo)
+	for _, w := range warnings {
+		human.WriteString("  ⚠ " + w + "\n")
+	}
 
 	return writeCommandOutput(cmd, "", []byte(human.String()))
 }
