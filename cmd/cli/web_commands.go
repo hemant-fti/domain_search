@@ -6,10 +6,10 @@ import (
 	"strings"
 	"time"
 
+	"domain-search/cmd/output"
 	"domain-search/internal/discovery"
 	"domain-search/models"
 	"domain-search/pkg/logger"
-	"domain-search/cmd/output"
 
 	"github.com/spf13/cobra"
 )
@@ -132,10 +132,12 @@ func NewDomainsCommandForServer(use, serverName string) *cobra.Command {
 				), nil
 			}
 
-			return textResult(
-				domains,
-				strings.Join(lines, "\n"),
-			), nil
+			var human strings.Builder
+			if err := output.WriteDomains(&human, domains); err != nil {
+				return models.CommandResult{}, err
+			}
+
+			return textResult(domains, human.String()), nil
 		},
 	)
 }

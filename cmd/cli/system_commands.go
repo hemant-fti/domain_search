@@ -2,15 +2,15 @@ package cli
 
 import (
 	"context"
-	"fmt"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
 
-	cmdoutput "domain-search/cmd/output"
-	"domain-search/pkg/system"
+	"domain-search/cmd/output"
 	"domain-search/models"
 	"domain-search/pkg/logger"
+	"domain-search/pkg/system"
 )
 
 func NewSystemCPUCommand() *cobra.Command {
@@ -29,9 +29,12 @@ func NewSystemCPUCommand() *cobra.Command {
 			"threads", info.Threads,
 			"duration", time.Since(startedAt).String(),
 		)
+		var human strings.Builder
+		if err := output.WriteCPU(&human, info); err != nil {
+			return models.CommandResult{}, err
+		}
 
-		return textResult(info,
-			fmt.Sprintf("CPU: %s\nCores: %d\nThreads: %d", info.Model, info.Cores, info.Threads)), nil
+		return textResult(info, human.String()), nil
 	})
 }
 
@@ -50,10 +53,12 @@ func NewSystemMemoryCommand() *cobra.Command {
 			"used_gb", info.UsedGB,
 			"duration", time.Since(startedAt).String(),
 		)
+		var human strings.Builder
+		if err := output.WriteMemory(&human, info); err != nil {
+			return models.CommandResult{}, err
+		}
 
-		return textResult(info,
-			fmt.Sprintf("Total: %.2f GiB\nUsed: %.2f GiB\nAvailable: %.2f GiB\nFree: %.2f GiB",
-				info.TotalGB, info.UsedGB, info.AvailableGB, info.FreeGB)), nil
+		return textResult(info, human.String()), nil
 	})
 }
 
@@ -70,14 +75,22 @@ func NewSystemUptimeCommand() *cobra.Command {
 		value := struct {
 			Seconds uint64 `json:"seconds"`
 			Display string `json:"display"`
-		}{uptime, cmdoutput.FormatUptime(uptime)}
+		}{
+			Seconds: uptime,
+			Display: output.FormatUptime(uptime),
+		}
 
 		logger.Debug("Uptime inspection completed",
 			"uptime", value.Display,
 			"duration", time.Since(startedAt).String(),
 		)
 
-		return textResult(value, "Uptime: "+value.Display), nil
+		var human strings.Builder
+		if err := output.WriteUptime(&human, uptime); err != nil {
+			return models.CommandResult{}, err
+		}
+
+		return textResult(value, human.String()), nil
 	})
 }
 
@@ -99,13 +112,11 @@ func NewDiskUsageCommand() *cobra.Command {
 			"duration", time.Since(startedAt).String(),
 		)
 
-		return textResult(info,
-			fmt.Sprintf(
-				"Total: %.2f GiB\nUsed: %.2f GiB\nAvailable: %.2f GiB\nFree: %.2f GiB",
-				info.TotalGB,
-				info.UsedGB,
-				info.AvailableGB,
-				info.FreeGB,
-			)), nil
+		var human strings.Builder
+		if err := output.WriteDisk(&human, info); err != nil {
+			return models.CommandResult{}, err
+		}
+
+		return textResult(info, human.String()), nil
 	})
 }

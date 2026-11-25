@@ -48,7 +48,7 @@ const (
 func WriteHuman(out io.Writer, result models.Result) error {
 	var b strings.Builder
 
-	writeHeader(&b, result, unicodeSymbols)
+	writeHeader(&b, result)
 	counts := dnsCounts(result)
 	writeSummary(&b, result, counts, unicodeSymbols)
 	writeWarnings(&b, result, unicodeSymbols)
@@ -68,19 +68,20 @@ func WriteHuman(out io.Writer, result models.Result) error {
 
 // ---------- sections ----------
 
-func writeHeader(w io.Writer, r models.Result, sym symbols) {
+func writeHeader(w io.Writer, r models.Result) {
 	fmt.Fprintln(w)
-	fmt.Fprintf(w, "  %s  %s\n", cyan("hostscope"), dim("· Server Discovery Report"))
-	fmt.Fprintf(w, "  %s\n", dim(strings.Repeat(rule(sym), ruleWidth)))
+	writeReportTitle(w, "Server Discovery Report")
 
 	host := DisplayValue(r.Server.Hostname)
 	ip := DisplayValue(r.Server.PrimaryIP)
+
 	fmt.Fprintf(w, "  %s %s %s\n", bold(host), dim("·"), ip)
 
 	meta := "Status: " + scanStatusLabel(r.Status)
 	if !r.ScannedAt.IsZero() {
 		meta += "  ·  " + r.ScannedAt.Format("02 Jan 2006, 03:04 PM MST")
 	}
+
 	fmt.Fprintf(w, "  %s\n\n", dim(meta))
 }
 
@@ -354,13 +355,6 @@ func section(w io.Writer, title string) {
 	fmt.Fprintf(w, "  %s\n", cyan(title))
 }
 
-func rule(sym symbols) string {
-	if sym.ok == "+" {
-		return "-"
-	}
-	return "─"
-}
-
 func kv(w io.Writer, indent, width int, key, value string) {
 	fmt.Fprintf(w, "%s%s %s\n",
 		strings.Repeat(" ", indent),
@@ -400,4 +394,90 @@ func usageBar[T number](used, total T, width int, sym symbols) string {
 	}
 
 	return fmt.Sprintf("%s %3.0f%%", style(bar), pct)
+}
+func WriteCPU(w io.Writer, info models.CPUInfo) error {
+	writeCommandHeader(w, "System Information")
+	writeCommandSection(w, "CPU")
+
+	kv(w, 2, keyWidth, "Model", DisplayValue(info.Model))
+	kv(w, 2, keyWidth, "Cores", formatCount(info.Cores))
+	kv(w, 2, keyWidth, "Threads", formatCount(info.Threads))
+
+	fmt.Fprintln(w)
+	return nil
+}
+
+func WriteMemory(w io.Writer, info models.MemoryInfo) error {
+	writeCommandHeader(w, "System Information")
+	writeCommandSection(w, "MEMORY")
+
+	kv(w, 2, keyWidth, "Total", formatStorage(info.TotalGB))
+	kv(w, 2, keyWidth, "Used", formatStorage(info.UsedGB))
+	kv(w, 2, keyWidth, "Available", formatStorage(info.AvailableGB))
+	kv(w, 2, keyWidth, "Free", formatStorage(info.FreeGB))
+
+	fmt.Fprintln(w)
+	return nil
+}
+
+func WriteUptime(w io.Writer, seconds uint64) error {
+	writeCommandHeader(w, "System Information")
+	writeCommandSection(w, "UPTIME")
+
+	kv(w, 2, keyWidth, "Uptime", FormatUptime(seconds))
+
+	fmt.Fprintln(w)
+	return nil
+}
+
+func WriteDisk(w io.Writer, info models.DiskInfo) error {
+	writeCommandHeader(w, "System Information")
+	writeCommandSection(w, "DISK")
+
+	kv(w, 2, keyWidth, "Total", formatStorage(info.TotalGB))
+	kv(w, 2, keyWidth, "Used", formatStorage(info.UsedGB))
+	kv(w, 2, keyWidth, "Available", formatStorage(info.AvailableGB))
+	kv(w, 2, keyWidth, "Free", formatStorage(info.FreeGB))
+
+	fmt.Fprintln(w)
+	return nil
+}
+
+func WriteDomains(w io.Writer, domains []models.Domain) error {
+	result := models.Result{
+		Status:       "completed",
+		TotalDomains: len(domains),
+		Domains:      make([]models.DomainResult, 0, len(domains)),
+	}
+
+	for _, domain := range domains {
+		result.Domains = append(result.Domains, models.DomainResult{
+			Domain: domain,
+		})
+	}
+
+	writeCommandHeader(w, "Server Discovery Report")
+
+	writeSummary(w, result, dnsCounts(result), unicodeSymbols)
+	writeWebsites(w, result, unicodeSymbols)
+
+	return nil
+}
+
+func writeCommandHeader(w io.Writer, title string) {
+	fmt.Fprintln(w)
+	writeReportTitle(w, title)
+	fmt.Fprintln(w)
+}
+
+func writeCommandSection(w io.Writer, title string) {
+	section(w, title)
+}
+
+func writeReportTitle(w io.Writer, title string) {
+	fmt.Fprintf(w, "  %s  %s\n",
+		cyan("hostscope"),
+		dim("· "+title),
+	)
+	fmt.Fprintf(w, "  %s\n", dim(strings.Repeat("─", ruleWidth)))
 }

@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/shirou/gopsutil/v4/cpu"
-	"github.com/shirou/gopsutil/v4/disk"
 	"github.com/shirou/gopsutil/v4/host"
 	"github.com/shirou/gopsutil/v4/mem"
 )
@@ -286,21 +285,12 @@ func CollectDiskInfo(ctx context.Context, path string) (models.DiskInfo, error) 
 	}
 
 	if path == "" {
-		return models.DiskInfo{}, fmt.Errorf("unsupported operating system: %s", runtime.GOOS)
+		return models.DiskInfo{}, fmt.Errorf(
+			"unsupported operating system: %s", runtime.GOOS,
+		)
 	}
 
-	usage, err := disk.UsageWithContext(ctx, path)
-	if err != nil {
-		return models.DiskInfo{}, fmt.Errorf("collect disk usage for %s: %w", path, err)
-	}
-
-	const bytesPerGB = 1024 * 1024 * 1024
-
-	return models.DiskInfo{
-		TotalGB: float64(usage.Total) / bytesPerGB,
-		FreeGB:  float64(usage.Free) / bytesPerGB,
-		UsedGB:  float64(usage.Used) / bytesPerGB,
-	}, nil
+	return collectDiskUsage(ctx, path)
 }
 
 // systemDiskPath returns the default system disk path.
