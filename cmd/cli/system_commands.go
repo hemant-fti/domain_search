@@ -120,3 +120,37 @@ func NewDiskUsageCommand() *cobra.Command {
 		return textResult(info, human.String()), nil
 	})
 }
+
+func runSystemInfo(cmd *cobra.Command) error {
+	ctx := cmd.Context()
+
+	cpuInfo, err := system.CollectCPUInfo(ctx)
+	if err != nil {
+		return err
+	}
+
+	memoryInfo, err := system.CollectMemoryInfo(ctx)
+	if err != nil {
+		return err
+	}
+
+	uptime, err := system.CollectUptime(ctx)
+	if err != nil {
+		return err
+	}
+
+	diskInfo, err := system.CollectDiskInfo(ctx, "/")
+	if err != nil {
+		return err
+	}
+
+	var human strings.Builder
+
+	output.WriteSystemHeader(&human)
+	output.WriteCPUSection(&human, cpuInfo)
+	output.WriteMemorySection(&human, memoryInfo)
+	output.WriteUptimeSection(&human, uptime)
+	output.WriteDiskSection(&human, diskInfo)
+
+	return writeCommandOutput(cmd, "", []byte(human.String()))
+}

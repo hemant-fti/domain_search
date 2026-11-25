@@ -395,53 +395,6 @@ func usageBar[T number](used, total T, width int, sym symbols) string {
 
 	return fmt.Sprintf("%s %3.0f%%", style(bar), pct)
 }
-func WriteCPU(w io.Writer, info models.CPUInfo) error {
-	writeCommandHeader(w, "System Information")
-	writeCommandSection(w, "CPU")
-
-	kv(w, 2, keyWidth, "Model", DisplayValue(info.Model))
-	kv(w, 2, keyWidth, "Cores", formatCount(info.Cores))
-	kv(w, 2, keyWidth, "Threads", formatCount(info.Threads))
-
-	fmt.Fprintln(w)
-	return nil
-}
-
-func WriteMemory(w io.Writer, info models.MemoryInfo) error {
-	writeCommandHeader(w, "System Information")
-	writeCommandSection(w, "MEMORY")
-
-	kv(w, 2, keyWidth, "Total", formatStorage(info.TotalGB))
-	kv(w, 2, keyWidth, "Used", formatStorage(info.UsedGB))
-	kv(w, 2, keyWidth, "Available", formatStorage(info.AvailableGB))
-	kv(w, 2, keyWidth, "Free", formatStorage(info.FreeGB))
-
-	fmt.Fprintln(w)
-	return nil
-}
-
-func WriteUptime(w io.Writer, seconds uint64) error {
-	writeCommandHeader(w, "System Information")
-	writeCommandSection(w, "UPTIME")
-
-	kv(w, 2, keyWidth, "Uptime", FormatUptime(seconds))
-
-	fmt.Fprintln(w)
-	return nil
-}
-
-func WriteDisk(w io.Writer, info models.DiskInfo) error {
-	writeCommandHeader(w, "System Information")
-	writeCommandSection(w, "DISK")
-
-	kv(w, 2, keyWidth, "Total", formatStorage(info.TotalGB))
-	kv(w, 2, keyWidth, "Used", formatStorage(info.UsedGB))
-	kv(w, 2, keyWidth, "Available", formatStorage(info.AvailableGB))
-	kv(w, 2, keyWidth, "Free", formatStorage(info.FreeGB))
-
-	fmt.Fprintln(w)
-	return nil
-}
 
 func WriteDomains(w io.Writer, domains []models.Domain) error {
 	result := models.Result{
@@ -480,4 +433,110 @@ func writeReportTitle(w io.Writer, title string) {
 		dim("· "+title),
 	)
 	fmt.Fprintf(w, "  %s\n", dim(strings.Repeat("─", ruleWidth)))
+}
+
+func writeCPUSection(w io.Writer, info models.CPUInfo) {
+	writeCommandSection(w, "CPU")
+	kv(w, 2, keyWidth, "Model", DisplayValue(info.Model))
+	kv(w, 2, keyWidth, "Cores", formatCount(info.Cores))
+	kv(w, 2, keyWidth, "Threads", formatCount(info.Threads))
+	fmt.Fprintln(w)
+}
+
+func writeMemorySection(w io.Writer, info models.MemoryInfo) {
+	writeCommandSection(w, "MEMORY")
+	kv(w, 2, keyWidth, "Total", formatStorage(info.TotalGB))
+	kv(w, 2, keyWidth, "Used", formatStorage(info.UsedGB))
+	kv(w, 2, keyWidth, "Available", formatStorage(info.AvailableGB))
+	kv(w, 2, keyWidth, "Free", formatStorage(info.FreeGB))
+
+	writeProcessMemory(w)
+	fmt.Fprintln(w)
+}
+
+func writeUptimeSection(w io.Writer, seconds uint64) {
+	writeCommandSection(w, "UPTIME")
+	kv(w, 2, keyWidth, "Uptime", FormatUptime(seconds))
+	fmt.Fprintln(w)
+}
+
+func writeDiskSection(w io.Writer, info models.DiskInfo) {
+	writeCommandSection(w, "DISK")
+	kv(w, 2, keyWidth, "Total", formatStorage(info.TotalGB))
+	kv(w, 2, keyWidth, "Used", formatStorage(info.UsedGB))
+	kv(w, 2, keyWidth, "Available", formatStorage(info.AvailableGB))
+	kv(w, 2, keyWidth, "Free", formatStorage(info.FreeGB))
+	fmt.Fprintln(w)
+}
+
+// WriteSystemHeader prints the common system report header.
+func WriteSystemHeader(w io.Writer) {
+	writeCommandHeader(w, "System Information")
+}
+
+// Exported section formatters for combined output.
+func WriteCPUSection(w io.Writer, info models.CPUInfo) {
+	writeCPUSection(w, info)
+}
+
+func WriteMemorySection(w io.Writer, info models.MemoryInfo) {
+	writeMemorySection(w, info)
+}
+
+func WriteUptimeSection(w io.Writer, seconds uint64) {
+	writeUptimeSection(w, seconds)
+}
+
+func WriteDiskSection(w io.Writer, info models.DiskInfo) {
+	writeDiskSection(w, info)
+}
+
+// Standalone command formatters.
+
+func WriteCPU(w io.Writer, info models.CPUInfo) error {
+	WriteSystemHeader(w)
+	writeCPUSection(w, info)
+	return nil
+}
+
+func WriteMemory(w io.Writer, info models.MemoryInfo) error {
+	WriteSystemHeader(w)
+	writeMemorySection(w, info)
+	return nil
+}
+
+func WriteUptime(w io.Writer, seconds uint64) error {
+	WriteSystemHeader(w)
+	writeUptimeSection(w, seconds)
+	return nil
+}
+
+func WriteDisk(w io.Writer, info models.DiskInfo) error {
+	WriteSystemHeader(w)
+	writeDiskSection(w, info)
+	return nil
+}
+
+// WriteSystem renders all system information using one common header.
+func WriteSystem(w io.Writer, info models.SystemInfo) error {
+	WriteSystemHeader(w)
+
+	writeCommandSection(w, "CPU")
+	kv(w, 2, keyWidth, "Model", DisplayValue(info.CPUModel))
+	kv(w, 2, keyWidth, "Cores", formatCount(info.Cores))
+	kv(w, 2, keyWidth, "Threads", formatCount(info.Threads))
+	fmt.Fprintln(w)
+
+	writeCommandSection(w, "MEMORY")
+	kv(w, 2, keyWidth, "Total", formatStorage(info.Memory.TotalGB))
+	kv(w, 2, keyWidth, "Used", formatStorage(info.Memory.UsedGB))
+	kv(w, 2, keyWidth, "Available", formatStorage(info.Memory.AvailableGB))
+	kv(w, 2, keyWidth, "Free", formatStorage(info.Memory.FreeGB))
+	writeProcessMemory(w)
+	fmt.Fprintln(w)
+
+	writeUptimeSection(w, info.Uptime)
+	writeDiskSection(w, info.Disk)
+
+	return nil
 }

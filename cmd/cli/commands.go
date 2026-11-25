@@ -94,11 +94,20 @@ func textResult(Value any, Human string) models.CommandResult {
 }
 
 func NewSystemCommand() *cobra.Command {
-	cmd := &cobra.Command{Use: "system", Short: "Inspect local system information"}
+	cmd := &cobra.Command{
+		Use:   "system",
+		Short: "Inspect local system information",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runSystemInfo(cmd)
+		},
+	}
+
 	cmd.AddCommand(NewSystemCPUCommand())
 	cmd.AddCommand(NewSystemMemoryCommand())
 	cmd.AddCommand(NewSystemUptimeCommand())
 	cmd.AddCommand(NewDiskUsageCommand())
+
 	return cmd
 }
 
