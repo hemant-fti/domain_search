@@ -30,16 +30,21 @@ func discoverIIS(ctx context.Context) ([]models.Domain, error) {
 		return nil, err
 	}
 
-	domains, err := Parse(string(data), configPath)
+	statuses, err := getIISSiteStatuses()
+	if err != nil {
+		statuses = nil
+	}
+
+	domains, err := ParseWithStatuses(
+		string(data),
+		configPath,
+		statuses,
+	)
 	if err != nil {
 		return nil, fmt.Errorf(
 			"failed to parse IIS configuration: %w",
 			err,
 		)
-	}
-
-	if err := ctx.Err(); err != nil {
-		return nil, err
 	}
 
 	return domains, nil

@@ -16,6 +16,18 @@ func Normalize(input []models.Domain) []models.Domain {
 			".",
 		)
 
+		domain.Aliases = appendUnique(nil, domain.Aliases...)
+		domain.Ports = appendUniqueInts(nil, domain.Ports...)
+		sort.Ints(domain.Ports)
+
+		// IIS records represent websites, not just DNS hostnames.
+		// Preserve each website independently.
+		if strings.EqualFold(domain.Source, "iis") {
+			out = append(out, domain)
+			continue
+		}
+
+		// DNS-based domain validation for other inspectors.
 		if domain.Name == "" || !strings.Contains(domain.Name, ".") {
 			continue
 		}
@@ -28,15 +40,12 @@ func Normalize(input []models.Domain) []models.Domain {
 			if existing.ConfigPath == "" {
 				existing.ConfigPath = domain.ConfigPath
 			}
-
 			if existing.DocumentRoot == "" {
 				existing.DocumentRoot = domain.DocumentRoot
 			}
-
 			if existing.ProxyTarget == "" {
 				existing.ProxyTarget = domain.ProxyTarget
 			}
-
 			if existing.SSLCertificate == "" {
 				existing.SSLCertificate = domain.SSLCertificate
 			}
@@ -54,10 +63,6 @@ func Normalize(input []models.Domain) []models.Domain {
 
 			continue
 		}
-
-		domain.Aliases = appendUnique(nil, domain.Aliases...)
-		domain.Ports = appendUniqueInts(nil, domain.Ports...)
-		sort.Ints(domain.Ports)
 
 		index[domain.Name] = len(out)
 		out = append(out, domain)

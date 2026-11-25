@@ -1,7 +1,14 @@
 package models
 
 type Domain struct {
-	Name           string   `json:"name"`
+	ID          string   `json:"id,omitempty"`
+	Name        string   `json:"name"`
+	WebsiteName string   `json:"website_name,omitempty"`
+	Status      string   `json:"status,omitempty"`
+	Binding     []string `json:"binding,omitempty"`
+	Path        string   `json:"path,omitempty"`
+	Hostname    string   `json:"hostname,omitempty"`
+
 	Source         string   `json:"source"`
 	ConfigPath     string   `json:"config_path"`
 	DocumentRoot   string   `json:"document_root"`

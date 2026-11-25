@@ -8,6 +8,14 @@ import (
 )
 
 func Parse(config string, configPath string) ([]models.Domain, error) {
+	return ParseWithStatuses(config, configPath, nil)
+}
+
+func ParseWithStatuses(
+	config string,
+	configPath string,
+	statuses map[string]string,
+) ([]models.Domain, error) {
 	var configuration models.IISConfiguration
 
 	if err := xml.Unmarshal([]byte(config), &configuration); err != nil {
@@ -17,15 +25,15 @@ func Parse(config string, configPath string) ([]models.Domain, error) {
 	var domains []models.Domain
 
 	for _, site := range configuration.SystemApplicationHost.Sites.Sites {
-		hosts := make([]string, 0)
-		ports := make([]int, 0)
+		var hosts []string
+		var bindings []string
+		var ports []int
 
 		seenHosts := make(map[string]bool)
 		seenPorts := make(map[int]bool)
 
 		var sslCertificate string
 
-		// Extract bindings.
 		for _, binding := range site.Bindings.Bindings {
 			host, port, valid := parseBindingInformation(
 				binding.BindingInformation,
@@ -35,7 +43,15 @@ func Parse(config string, configPath string) ([]models.Domain, error) {
 				continue
 			}
 
-			if host != "" && host != "*" && !seenHosts[strings.ToLower(host)] {
+			bindingDescription := formatIISBinding(binding)
+			if bindingDescription != "" {
+				bindings = append(bindings, bindingDescription)
+			}
+
+			bindings = append(bindings, bindingDescription)
+
+			if host != "" && host != "*" &&
+				!seenHosts[strings.ToLower(host)] {
 				hosts = append(hosts, host)
 				seenHosts[strings.ToLower(host)] = true
 			}
@@ -53,27 +69,51 @@ func Parse(config string, configPath string) ([]models.Domain, error) {
 			}
 		}
 
-		if len(hosts) == 0 {
+		if len(bindings) == 0 {
 			continue
 		}
 
-		documentRoot := extractDocumentRoot(site)
+		documentRoot := expandWindowsPath(
+			extractDocumentRoot(site),
+		)
+
 		proxyTarget := extractProxyTarget(config, site.Name)
 
-		// Resolve certificate from HTTP.sys if XML does not contain it.
 		if sslCertificate == "" {
 			sslCertificate = resolveSSLCertificate(site)
 		}
 
+		status := statuses[site.Name]
+		if status == "" {
+			status = "Unknown"
+		}
+
+		hostname := ""
+		if len(hosts) > 0 {
+			hostname = hosts[0]
+		}
+
+		var aliases []string
+		if len(hosts) > 1 {
+			aliases = append(aliases, hosts[1:]...)
+		}
+
 		domain := models.Domain{
-			Name:           hosts[0],
+			ID:          site.ID,
+			Name:        hostname,
+			WebsiteName: site.Name,
+			Status:      status,
+			Binding:     bindings,
+			Path:        documentRoot,
+			Hostname:    hostname,
+
 			Source:         "iis",
 			ConfigPath:     configPath,
-			Aliases:        append([]string{}, hosts[1:]...),
-			Ports:          ports,
 			DocumentRoot:   documentRoot,
 			ProxyTarget:    proxyTarget,
 			SSLCertificate: sslCertificate,
+			Aliases:        aliases,
+			Ports:          ports,
 		}
 
 		domains = append(domains, domain)
@@ -189,4 +229,29 @@ func normalizeCertificateHash(hash string) string {
 	hash = strings.ReplaceAll(hash, ":", "")
 
 	return strings.ToUpper(hash)
+}
+
+func formatIISBinding(binding models.IISBinding) string {
+	host, port, ok := parseBindingInformation(
+		binding.BindingInformation,
+	)
+	if !ok {
+		return ""
+	}
+
+	parts := strings.SplitN(
+		binding.BindingInformation,
+		":",
+		3,
+	)
+
+	ip := strings.TrimSpace(parts[0])
+
+	address := ip + ":" + strconv.Itoa(port)
+
+	if host != "" {
+		address = host + " on " + address
+	}
+
+	return address + " (" + strings.ToLower(binding.Protocol) + ")"
 }

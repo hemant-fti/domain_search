@@ -132,8 +132,6 @@ func writeWarnings(w io.Writer, r models.Result, sym symbols) {
 	fmt.Fprintln(w)
 }
 
-
-
 func writeServices(w io.Writer, r models.Result, sym symbols) {
 	section(w, "SERVICES")
 
@@ -169,7 +167,7 @@ func writeWebsites(w io.Writer, r models.Result, sym symbols) {
 		return
 	}
 
-	header := []string{"DOMAIN", "SERVER", "PORTS", "SSL", "DNS"}
+	header := []string{"DOMAIN / WEBSITE", "SERVER", "PORTS", "SSL", "DNS"}
 	rows := make([][]cell, 0, len(r.Domains))
 
 	for _, d := range r.Domains {
@@ -178,8 +176,15 @@ func writeWebsites(w io.Writer, r models.Result, sym symbols) {
 			ssl = cell{green(sym.ok), sym.ok}
 		}
 
+		displayName := d.Name
+		if strings.EqualFold(d.Source, "iis") {
+			if strings.TrimSpace(displayName) == "" {
+				displayName = d.WebsiteName
+			}
+		}
+
 		rows = append(rows, []cell{
-			plain(truncate(DisplayValue(d.Name), maxDomainLen, sym.ellipsis)),
+			plain(truncate(DisplayValue(displayName), maxDomainLen, sym.ellipsis)),
 			plain(DisplayValue(d.Source)),
 			plain(displayPorts(d.Ports)),
 			ssl,
@@ -187,12 +192,27 @@ func writeWebsites(w io.Writer, r models.Result, sym symbols) {
 		})
 	}
 
-	// Always display the domain table, including ports.
+	// Always display the website table.
 	writeTable(w, header, rows)
 
-	// Always display detailed domain information.
+	// Display detailed website information.
 	for _, d := range r.Domains {
-		fmt.Fprintf(w, "\n  %s\n", bold(DisplayValue(d.Name)))
+		displayName := d.Name
+		if strings.EqualFold(d.Source, "iis") && strings.TrimSpace(displayName) == "" {
+			displayName = d.WebsiteName
+		}
+
+		fmt.Fprintf(w, "\n  %s\n", bold(DisplayValue(displayName)))
+
+		if strings.EqualFold(d.Source, "iis") {
+			kv(w, 4, 18, "Website ID", DisplayValue(d.ID))
+			kv(w, 4, 18, "Website name", DisplayValue(d.WebsiteName))
+			kv(w, 4, 18, "Status", DisplayValue(d.Status))
+			kv(w, 4, 18, "Hostname", DisplayValue(d.Hostname))
+			kv(w, 4, 18, "Bindings", DisplayList(d.Binding))
+			kv(w, 4, 18, "Physical path", DisplayValue(d.Path))
+		}
+
 		kv(w, 4, 18, "Config file", DisplayValue(d.ConfigPath))
 		kv(w, 4, 18, "Document root", DisplayValue(d.DocumentRoot))
 		kv(w, 4, 18, "Proxy target", DisplayValue(d.ProxyTarget))
