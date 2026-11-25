@@ -56,6 +56,9 @@ func WriteHuman(out io.Writer, result models.Result) error {
 	writeWebsites(&b, result, unicodeSymbols)
 	writeSystem(&b, result, unicodeSymbols)
 
+	// Runtime memory consumption
+	writeProcessMemory(&b)
+
 	if _, err := io.WriteString(out, b.String()); err != nil {
 		return fmt.Errorf("write human-readable output: %w", err)
 	}

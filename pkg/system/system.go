@@ -392,3 +392,18 @@ func CollectUptime(ctx context.Context) (uint64, error) {
 
 	return info.Uptime, nil
 }
+
+func GetProcessMemory() models.ProcessMemory {
+	var stats runtime.MemStats
+	runtime.ReadMemStats(&stats)
+
+	const mb = 1024 * 1024
+
+	return models.ProcessMemory{
+		AllocMB:      float64(stats.Alloc) / mb,
+		TotalAllocMB: float64(stats.TotalAlloc) / mb,
+		SysMB:        float64(stats.Sys) / mb,
+		HeapAllocMB:  float64(stats.HeapAlloc) / mb,
+		HeapSysMB:    float64(stats.HeapSys) / mb,
+	}
+}

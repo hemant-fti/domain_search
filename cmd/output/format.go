@@ -1,7 +1,9 @@
 package output
 
 import (
+	"domain-search/pkg/system"
 	"fmt"
+	"io"
 	"strconv"
 	"strings"
 )
@@ -131,4 +133,24 @@ func uniqueStrings(values []string) []string {
 	}
 
 	return result
+}
+
+func writeProcessMemory(w io.Writer) {
+	memory := system.GetProcessMemory()
+
+	section(w, "PROCESS MEMORY")
+
+	kv(w, 2, keyWidth, "Heap allocated",
+		fmt.Sprintf("%.2f MB", memory.AllocMB))
+
+	kv(w, 2, keyWidth, "Total allocated",
+		fmt.Sprintf("%.2f MB", memory.TotalAllocMB))
+
+	kv(w, 2, keyWidth, "Runtime memory",
+		fmt.Sprintf("%.2f MB", memory.SysMB))
+
+	kv(w, 2, keyWidth, "Heap reserved",
+		fmt.Sprintf("%.2f MB", memory.HeapSysMB))
+
+	fmt.Fprintln(w)
 }

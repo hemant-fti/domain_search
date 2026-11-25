@@ -60,3 +60,10 @@ type OSInfo struct {
 	Architecture string `json:"architecture"`
 }
 
+type ProcessMemory struct {
+	AllocMB      float64 `json:"alloc_mb"`
+	TotalAllocMB float64 `json:"total_alloc_mb"`
+	SysMB        float64 `json:"sys_mb"`
+	HeapAllocMB  float64 `json:"heap_alloc_mb"`
+	HeapSysMB    float64 `json:"heap_sys_mb"`
+}
