@@ -91,7 +91,7 @@ func applyDocumentRoots(domains []models.Domain, text string) {
 		key := domains[i].ConfigPath + "\x00" + domains[i].Name
 
 		if value := roots[key]; value != "" {
-			domains[i].DocumentRoot = value
+			domains[i].Path = value
 		}
 	}
 }

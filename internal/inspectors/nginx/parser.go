@@ -13,7 +13,6 @@ var (
 	serverStart = regexp.MustCompile(`(?m)^[ \t]*server[ \t]*\{`)
 
 	serverName  = regexp.MustCompile(`(?m)^[ \t]*server_name[ \t]+([^;]+);`)
-	root        = regexp.MustCompile(`(?m)^[ \t]*root[ \t]+([^;]+);`)
 	proxy       = regexp.MustCompile(`(?m)^[ \t]*proxy_pass[ \t]+([^;]+);`)
 	certificate = regexp.MustCompile(`(?m)^[ \t]*ssl_certificate[ \t]+([^;]+);`)
 )
@@ -56,10 +55,6 @@ func Parse(config string) []models.Domain {
 
 		if len(domain.Ports) == 0 {
 			domain.Ports = []int{80}
-		}
-
-		if match := root.FindStringSubmatch(block); len(match) > 1 {
-			domain.DocumentRoot = strings.TrimSpace(match[1])
 		}
 
 		if match := proxy.FindStringSubmatch(block); len(match) > 1 {

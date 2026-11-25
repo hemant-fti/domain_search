@@ -109,7 +109,6 @@ func ParseWithStatuses(
 
 			Source:         "iis",
 			ConfigPath:     configPath,
-			DocumentRoot:   documentRoot,
 			ProxyTarget:    proxyTarget,
 			SSLCertificate: sslCertificate,
 			Aliases:        aliases,

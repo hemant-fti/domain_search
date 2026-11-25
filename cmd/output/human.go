@@ -214,7 +214,6 @@ func writeWebsites(w io.Writer, r models.Result, sym symbols) {
 		}
 
 		kv(w, 4, 18, "Config file", DisplayValue(d.ConfigPath))
-		kv(w, 4, 18, "Document root", DisplayValue(d.DocumentRoot))
 		kv(w, 4, 18, "Proxy target", DisplayValue(d.ProxyTarget))
 		kv(w, 4, 18, "SSL certificate", DisplayValue(d.SSLCertificate))
 		kv(w, 4, 18, "Aliases", DisplayList(d.Aliases))
@@ -302,18 +301,26 @@ func writeTable(w io.Writer, header []string, rows [][]cell) {
 
 func writeSystem(w io.Writer, r models.Result, sym symbols) {
 	s := r.System
+
 	section(w, "SYSTEM")
 
-	osName := strings.TrimSpace(DisplayValue(s.ServerOS) + " " + DisplayValue(s.OSVersion))
+	osName := strings.TrimSpace(s.ServerOS)
+	osVersion := strings.TrimSpace(s.OSVersion)
+
 	if osName == "" {
-		osName = DisplayValue(r.Server.OperatingSystem)
+		osName = strings.TrimSpace(r.Server.OperatingSystem)
 	}
 
-	kv(w, 2, keyWidth, "OS", osName)
-	kv(w, 2, keyWidth, "Kernel", DisplayValue(s.Kernel))
+	kv(w, 2, keyWidth, "OS", DisplayValue(osName))
+	kv(w, 2, keyWidth, "Version", DisplayValue(osVersion))
 	kv(w, 2, keyWidth, "Architecture", DisplayValue(s.Architecture))
+
 	kv(w, 2, keyWidth, "CPU", fmt.Sprintf("%s (%s cores / %s threads)",
-		DisplayValue(s.CPUModel), formatCount(s.Cores), formatCount(s.Threads)))
+		DisplayValue(s.CPUModel),
+		formatCount(s.Cores),
+		formatCount(s.Threads),
+	))
+
 	kv(w, 2, keyWidth, "Uptime", FormatUptime(s.Uptime))
 	kv(w, 2, keyWidth, "User", DisplayValue(s.CurrentUser))
 	kv(w, 2, keyWidth, "Time zone", DisplayValue(s.Timezone))
@@ -322,12 +329,19 @@ func writeSystem(w io.Writer, r models.Result, sym symbols) {
 	kv(w, 2, keyWidth, "MAC", DisplayValue(s.MAC))
 
 	fmt.Fprintln(w)
+
 	fmt.Fprintf(w, "  %-*s %s  %s / %s\n", keyWidth-2, "Disk",
 		usageBar(s.Disk.UsedGB, s.Disk.TotalGB, 20, sym),
-		formatStorage(s.Disk.UsedGB), formatStorage(s.Disk.TotalGB))
+		formatStorage(s.Disk.UsedGB),
+		formatStorage(s.Disk.TotalGB),
+	)
+
 	fmt.Fprintf(w, "  %-*s %s  %s / %s\n", keyWidth-2, "Memory",
 		usageBar(s.Memory.UsedGB, s.Memory.TotalGB, 20, sym),
-		formatStorage(s.Memory.UsedGB), formatStorage(s.Memory.TotalGB))
+		formatStorage(s.Memory.UsedGB),
+		formatStorage(s.Memory.TotalGB),
+	)
+
 	fmt.Fprintln(w)
 }
 

@@ -92,10 +92,6 @@ func NewDomainsCommandForServer(use, serverName string) *cobra.Command {
 					domain.Source,
 				)
 
-				if domain.DocumentRoot != "" {
-					line += " -> " + domain.DocumentRoot
-				}
-
 				if len(domain.Aliases) > 0 {
 					line += " [aliases: " +
 						strings.Join(domain.Aliases, ", ") + "]"
@@ -207,7 +203,6 @@ func NewDomainsGetdatabyServerNameCommand() *cobra.Command {
 					"Domain: %s\n"+
 						"Server: %s\n"+
 						"Configuration: %s\n"+
-						"Document Root: %s\n"+
 						"Proxy Target: %s\n"+
 						"SSL Certificate: %s\n"+
 						"Aliases: %s\n"+
@@ -215,7 +210,6 @@ func NewDomainsGetdatabyServerNameCommand() *cobra.Command {
 					domain.Name,
 					domain.Source,
 					domain.ConfigPath,
-					domain.DocumentRoot,
 					domain.ProxyTarget,
 					domain.SSLCertificate,
 					strings.Join(domain.Aliases, ", "),

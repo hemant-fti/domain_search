@@ -41,16 +41,11 @@ func TestParseAndApplyDocumentRoots(t *testing.T) {
 	if !reflect.DeepEqual(domains[0].Ports, []int{80}) {
 		t.Errorf("first ports = %#v", domains[0].Ports)
 	}
-	if domains[0].DocumentRoot != "/var/www/apache" {
-		t.Errorf("first document root = %q", domains[0].DocumentRoot)
-	}
+
 	if !reflect.DeepEqual(domains[1].Aliases, []string{"www.apache2.com", "www2.apache2.com"}) {
 		t.Errorf("second aliases = %#v", domains[1].Aliases)
 	}
 	if !reflect.DeepEqual(domains[1].Ports, []int{443}) {
 		t.Errorf("second ports = %#v", domains[1].Ports)
-	}
-	if domains[1].DocumentRoot != "/var/www/apache2" {
-		t.Errorf("second document root = %q", domains[1].DocumentRoot)
 	}
 }

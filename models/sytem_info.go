@@ -8,6 +8,7 @@ type Info struct {
 }
 
 type SystemInfo struct {
+	OS           OSInfo     `json:"os"`
 	Hostname     string     `json:"hostname"`
 	IPv4         []string   `json:"ipv4"`
 	IPv6         []string   `json:"ipv6"`
@@ -51,3 +52,11 @@ type NetworkInfo struct {
 	IPv6 []string `json:"ipv6"`
 	MAC  string   `json:"mac"`
 }
+
+type OSInfo struct {
+	Name         string `json:"name"`
+	Family       string `json:"family"`
+	Version      string `json:"version"`
+	Architecture string `json:"architecture"`
+}
+

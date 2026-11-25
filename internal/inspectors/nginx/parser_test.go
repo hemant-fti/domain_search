@@ -29,9 +29,6 @@ server {
 	if domain.ConfigPath != "/etc/nginx/sites-enabled/demo" {
 		t.Errorf("config path = %q", domain.ConfigPath)
 	}
-	if domain.DocumentRoot != "/var/www/demo" {
-		t.Errorf("document root = %q", domain.DocumentRoot)
-	}
 	if !reflect.DeepEqual(domain.Ports, []int{80, 443}) {
 		t.Errorf("ports = %#v", domain.Ports)
 	}

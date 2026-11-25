@@ -28,15 +28,6 @@ func (d *Detector) Detect(ctx context.Context) (models.Info, error) {
 		return out, err
 	}
 
-	osName, err := system.OperatingSystem()
-	if err == nil {
-		out.OperatingSystem = osName
-	}
-
-	if err := ctx.Err(); err != nil {
-		return out, err
-	}
-
 	kernel, err := system.KernelVersion()
 	if err == nil {
 		out.Kernel = kernel

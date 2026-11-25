@@ -65,11 +65,10 @@ func scanInspector(
 
 	for _, domain := range domains {
 		result.Domains = append(result.Domains, models.DomainInfo{
-			Domain:       domain.Name,
-			Aliases:      nonNilStrings(domain.Aliases),
-			ConfigFile:   domain.ConfigPath,
-			DocumentRoot: domain.DocumentRoot,
-			Ports:        nonNilInts(domain.Ports),
+			Domain:     domain.Name,
+			Aliases:    nonNilStrings(domain.Aliases),
+			ConfigFile: domain.ConfigPath,
+			Ports:      nonNilInts(domain.Ports),
 		})
 
 		// Keep one record per virtual host.

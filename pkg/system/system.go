@@ -19,6 +19,8 @@ import (
 )
 
 // GetSysInfo collects system information.
+// GetSysInfo collects system information.
+
 func GetSysInfo(ctx context.Context) (models.SystemInfo, []string, error) {
 	info := models.SystemInfo{
 		IPv4: []string{},
@@ -34,6 +36,7 @@ func GetSysInfo(ctx context.Context) (models.SystemInfo, []string, error) {
 		return info, nil, fmt.Errorf("collect host information: %w", err)
 	}
 
+	// Default OS information from gopsutil.
 	info.Hostname = hostInfo.Hostname
 	info.ServerOS = hostInfo.Platform
 	info.OSVersion = hostInfo.PlatformVersion
@@ -41,19 +44,34 @@ func GetSysInfo(ctx context.Context) (models.SystemInfo, []string, error) {
 	info.Kernel = hostInfo.KernelVersion
 	info.Uptime = hostInfo.Uptime
 
+	// Prefer detailed platform-specific OS information.
+	osInfo, osErr := DetectOS()
+
+	if osErr == nil {
+		if osInfo.Name != "" {
+			info.ServerOS = osInfo.Name
+		}
+
+		if osInfo.Version != "" {
+			info.OSVersion = osInfo.Version
+		}
+
+		if osInfo.Architecture != "" {
+			info.Architecture = osInfo.Architecture
+		}
+	}
+
 	if kernel, err := KernelVersion(); err == nil && kernel != "" {
 		info.Kernel = kernel
 	}
 
-	// Use more descriptive OS name where available.
-	if osName, err := OperatingSystem(); err == nil && osName != "" {
-		info.ServerOS = osName
-	}
+	// Current user.
 	currentUser, err := user.Current()
 	if err == nil {
 		info.CurrentUser = currentUser.Username
 	}
 
+	// Timezone.
 	info.Timezone = time.Now().Location().String()
 	if info.Timezone == "" {
 		info.Timezone = "UTC"
@@ -100,6 +118,7 @@ func GetSysInfo(ctx context.Context) (models.SystemInfo, []string, error) {
 		return info, nil, err
 	}
 
+	// Assign collected information.
 	info.CPUModel = cpuInfo.Model
 	info.Cores = cpuInfo.Cores
 	info.Threads = cpuInfo.Threads
@@ -109,6 +128,7 @@ func GetSysInfo(ctx context.Context) (models.SystemInfo, []string, error) {
 	info.IPv6 = networkInfo.IPv6
 	info.MAC = networkInfo.MAC
 
+	// Track unavailable information.
 	var unavailable []string
 
 	fields := []struct {
@@ -128,6 +148,10 @@ func GetSysInfo(ctx context.Context) (models.SystemInfo, []string, error) {
 		if strings.TrimSpace(field.value) == "" {
 			unavailable = append(unavailable, field.name)
 		}
+	}
+
+	if osErr != nil {
+		unavailable = append(unavailable, "detailed_os_information")
 	}
 
 	if info.Cores <= 0 || info.Threads <= 0 || cpuErr != nil {
@@ -155,10 +179,13 @@ func GetSysInfo(ctx context.Context) (models.SystemInfo, []string, error) {
 	}
 
 	var warnings []string
+
 	if len(unavailable) > 0 {
-		warnings = append(warnings,
+		warnings = append(
+			warnings,
 			"system information unavailable for: "+
-				strings.Join(unavailable, ", "))
+				strings.Join(unavailable, ", "),
+		)
 	}
 
 	return info, warnings, nil

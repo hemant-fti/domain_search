@@ -11,7 +11,6 @@ type Domain struct {
 
 	Source         string   `json:"source"`
 	ConfigPath     string   `json:"config_path"`
-	DocumentRoot   string   `json:"document_root"`
 	ProxyTarget    string   `json:"proxy_target"`
 	SSLCertificate string   `json:"ssl_certificate"`
 	Aliases        []string `json:"aliases"`

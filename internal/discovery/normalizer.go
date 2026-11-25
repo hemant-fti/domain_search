@@ -40,9 +40,6 @@ func Normalize(input []models.Domain) []models.Domain {
 			if existing.ConfigPath == "" {
 				existing.ConfigPath = domain.ConfigPath
 			}
-			if existing.DocumentRoot == "" {
-				existing.DocumentRoot = domain.DocumentRoot
-			}
 			if existing.ProxyTarget == "" {
 				existing.ProxyTarget = domain.ProxyTarget
 			}
