@@ -5,6 +5,7 @@ package system
 import (
 	"os"
 	"strings"
+	"syscall"
 )
 
 func OperatingSystem() (string, error) {
@@ -15,7 +16,7 @@ func OperatingSystem() (string, error) {
 
 	for _, line := range strings.Split(string(data), "\n") {
 		key, value, found := strings.Cut(line, "=")
-		if found && strings.TrimSpace(key) == "PRETTY_NAME" {
+		if found && key == "PRETTY_NAME" {
 			return strings.Trim(strings.TrimSpace(value), `"'`), nil
 		}
 	}
@@ -24,10 +25,25 @@ func OperatingSystem() (string, error) {
 }
 
 func KernelVersion() (string, error) {
-	data, err := os.ReadFile("/proc/sys/kernel/osrelease")
-	if err != nil {
+	var uts syscall.Utsname
+
+	if err := syscall.Uname(&uts); err != nil {
 		return "", err
 	}
 
-	return strings.TrimSpace(string(data)), nil
+	return CharsToString(uts.Release[:]), nil
+}
+
+func CharsToString(chars []int8) string {
+	var result strings.Builder
+
+	for _, c := range chars {
+		if c == 0 {
+			break
+		}
+
+		result.WriteByte(byte(c))
+	}
+
+	return result.String()
 }
