@@ -1,9 +1,6 @@
-package discovery
+package models
 
 import (
-	"domain-search/internal/dns"
-	"domain-search/internal/server"
-	"domain-search/models"
 	"time"
 )
 
@@ -11,7 +8,7 @@ type Result struct {
 	ScanResponse
 	Status           string         `json:"status"`
 	ScannedAt        time.Time      `json:"scanned_at"`
-	Server           server.Info    `json:"server"`
+	Server           Info           `json:"server"`
 	DetectedServices []string       `json:"detected_services"`
 	TotalDomains     int            `json:"total_domains"`
 	Domains          []DomainResult `json:"domains"`
@@ -20,12 +17,15 @@ type Result struct {
 }
 
 type DomainResult struct {
-	models.Domain
-	DNS dns.Result `json:"dns"`
+	Domain
+	DNS DNSResult `json:"dns"`
 }
 
-type SystemInfo = server.SystemInfo
-
-type DiskInfo = server.DiskInfo
-
-type MemoryInfo = server.MemoryInfo
+type ScanError struct {
+	Type      string    `json:"type"`
+	Code      string    `json:"code"`
+	Message   string    `json:"message"`
+	Details   string    `json:"details,omitempty"`
+	Component string    `json:"component,omitempty"`
+	Timestamp time.Time `json:"timestamp"`
+}

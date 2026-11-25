@@ -1,22 +1,4 @@
-package server
-
-import (
-	"context"
-)
-
-type Service struct {
-	detector *Detector
-}
-
-func NewService() *Service {
-	return &Service{
-		detector: NewDetector(),
-	}
-}
-
-func (s *Service) GetInfo(ctx context.Context) (Info, error) {
-	return s.detector.Detect(ctx)
-}
+package models
 
 type Info struct {
 	Hostname        string `json:"hostname"`
@@ -56,4 +38,16 @@ type MemoryInfo struct {
 	AvailableGB float64 `json:"available_gb"`
 	FreeGB      float64 `json:"free_gb"`
 	UsedGB      float64 `json:"used_gb"`
+}
+
+type CPUInfo struct {
+	Model   string `json:"model"`
+	Cores   int    `json:"cores"`
+	Threads int    `json:"threads"`
+}
+
+type NetworkInfo struct {
+	IPv4 []string `json:"ipv4"`
+	IPv6 []string `json:"ipv6"`
+	MAC  string   `json:"mac"`
 }

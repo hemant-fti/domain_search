@@ -2,20 +2,12 @@ package discovery
 
 import (
 	"context"
+	"domain-search/models"
 	"errors"
 	"regexp"
 	"strings"
 	"time"
 )
-
-type ScanError struct {
-	Type      string    `json:"type"`
-	Code      string    `json:"code"`
-	Message   string    `json:"message"`
-	Details   string    `json:"details,omitempty"`
-	Component string    `json:"component,omitempty"`
-	Timestamp time.Time `json:"timestamp"`
-}
 
 var (
 	secretAssignmentPattern  = regexp.MustCompile(`(?im)(["']?\b(password|passwd|token|secret|api[_-]?key)["']?\s*(?:[:=]\s*|\bis\s+))[^\r\n,;]*`)
@@ -24,7 +16,7 @@ var (
 	privateKeyPattern        = regexp.MustCompile(`(?is)-----BEGIN [^-]*PRIVATE KEY-----.*?-----END [^-]*PRIVATE KEY-----`)
 )
 
-func NewScanError(eventType, component string, err error, timestamp time.Time) ScanError {
+func NewScanError(eventType, component string, err error, timestamp time.Time) models.ScanError {
 	if timestamp.IsZero() {
 		timestamp = time.Now().UTC()
 	}
@@ -38,7 +30,7 @@ func NewScanError(eventType, component string, err error, timestamp time.Time) S
 	}
 	code, message := classifyError(err, component)
 
-	return ScanError{
+	return models.ScanError{
 		Type:      eventType,
 		Code:      code,
 		Message:   message,
@@ -48,7 +40,7 @@ func NewScanError(eventType, component string, err error, timestamp time.Time) S
 	}
 }
 
-func WarningEvent(warning string) ScanError {
+func WarningEvent(warning string) models.ScanError {
 	component, detail := splitWarning(warning)
 	return NewScanError("warning", component, errors.New(detail), time.Now().UTC())
 }

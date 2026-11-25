@@ -50,7 +50,7 @@ func TestInspectUsesSharedInspectorLogic(t *testing.T) {
 		},
 	})
 
-	result, err := service.Inspect(context.Background(), "nginx", InspectOptions{
+	result, err := service.Inspect(context.Background(), "nginx", models.InspectOptions{
 		Domains: true,
 		Config:  true,
 	})
@@ -71,7 +71,7 @@ func TestInspectRejectsUnsupportedServer(t *testing.T) {
 	}
 	service := NewService(nil)
 
-	_, err := service.Inspect(context.Background(), "caddy", InspectOptions{
+	_, err := service.Inspect(context.Background(), "caddy", models.InspectOptions{
 		Domains: true,
 		Config:  true,
 	})

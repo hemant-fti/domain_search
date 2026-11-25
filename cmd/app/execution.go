@@ -9,6 +9,8 @@ import (
 	"io"
 	"os"
 	"time"
+
+	"github.com/spf13/cobra"
 )
 
 func executeApplication(ctx context.Context) error {
@@ -39,11 +41,12 @@ func executeApplication(ctx context.Context) error {
 	}
 
 	history.RecordCommandExecution(
-		executedCommand,
+		executedCommand.CommandPath(),
 		os.Args[1:],
 		startedAt,
 		stdout.String(),
 		fileOutput.String(),
+		getOutputFile(executedCommand),
 		err,
 	)
 
@@ -62,4 +65,13 @@ func executeApplication(ctx context.Context) error {
 	)
 
 	return nil
+}
+
+func getOutputFile(cmd *cobra.Command) string {
+	if cmd == nil {
+		return ""
+	}
+
+	output, _ := cmd.Flags().GetString("output")
+	return output
 }

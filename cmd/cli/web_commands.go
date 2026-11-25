@@ -27,7 +27,7 @@ func inspectDomains(
 	for _, name := range serverNames {
 		logger.Debug("Discovering virtual hosts", "server", name)
 
-		result, err := service.Inspect(ctx, name, discovery.InspectOptions{
+		result, err := service.Inspect(ctx, name, models.InspectOptions{
 			Domains: true,
 		})
 
@@ -62,7 +62,7 @@ func NewDomainsCommandForServer(use, serverName string) *cobra.Command {
 	return newResultCommand(
 		use,
 		"List configured virtual hosts",
-		func(ctx context.Context, _ *cobra.Command) (commandResult, error) {
+		func(ctx context.Context, _ *cobra.Command) (models.CommandResult, error) {
 			startedAt := time.Now()
 
 			service := discovery.NewLocalService()
@@ -74,7 +74,7 @@ func NewDomainsCommandForServer(use, serverName string) *cobra.Command {
 			}
 
 			if len(names) == 0 {
-				return commandResult{}, fmt.Errorf(
+				return models.CommandResult{}, fmt.Errorf(
 					"no web server inspectors are registered for this platform",
 				)
 			}
@@ -121,7 +121,7 @@ func NewDomainsCommandForServer(use, serverName string) *cobra.Command {
 			)
 
 			if len(domains) == 0 && len(failures) > 0 {
-				return commandResult{}, fmt.Errorf(
+				return models.CommandResult{}, fmt.Errorf(
 					"domain discovery failed: %s",
 					strings.Join(failures, "; "),
 				)
@@ -146,17 +146,17 @@ func NewDomainsGetdatabyServerNameCommand() *cobra.Command {
 	cmd := newResultCommand(
 		"get-data-by-name <domain>",
 		"Retrieve domain data by name",
-		func(ctx context.Context, cmd *cobra.Command) (commandResult, error) {
+		func(ctx context.Context, cmd *cobra.Command) (models.CommandResult, error) {
 			args := cmd.Flags().Args()
 
 			if len(args) == 0 {
-				return commandResult{}, fmt.Errorf("domain name cannot be empty")
+				return models.CommandResult{}, fmt.Errorf("domain name cannot be empty")
 			}
 
 			name := strings.TrimSpace(args[0])
 
 			if name == "" {
-				return commandResult{}, fmt.Errorf(
+				return models.CommandResult{}, fmt.Errorf(
 					"domain name cannot be empty",
 				)
 			}
@@ -231,14 +231,14 @@ func NewDomainsGetdatabyServerNameCommand() *cobra.Command {
 			}
 
 			if len(failures) > 0 {
-				return commandResult{}, fmt.Errorf(
+				return models.CommandResult{}, fmt.Errorf(
 					"domain %q was not found; some servers could not be inspected: %s",
 					name,
 					strings.Join(failures, "; "),
 				)
 			}
 
-			return commandResult{}, fmt.Errorf(
+			return models.CommandResult{}, fmt.Errorf(
 				"domain %q was not found in the available web server configurations",
 				name,
 			)

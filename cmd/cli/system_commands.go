@@ -8,18 +8,19 @@ import (
 	"github.com/spf13/cobra"
 
 	cmdoutput "domain-search/cmd/output"
-	"domain-search/internal/inspectors/system"
+	"domain-search/pkg/system"
+	"domain-search/models"
 	"domain-search/pkg/logger"
 )
 
 func NewSystemCPUCommand() *cobra.Command {
-	return newResultCommand("cpu", "Show CPU model and core counts", func(ctx context.Context, _ *cobra.Command) (commandResult, error) {
+	return newResultCommand("cpu", "Show CPU model and core counts", func(ctx context.Context, _ *cobra.Command) (models.CommandResult, error) {
 		startedAt := time.Now()
 		logger.Debug("CPU inspection started")
 
 		info, err := system.CollectCPUInfo(ctx)
 		if err != nil {
-			return commandResult{}, err
+			return models.CommandResult{}, err
 		}
 
 		logger.Debug("CPU inspection completed",
@@ -35,13 +36,13 @@ func NewSystemCPUCommand() *cobra.Command {
 }
 
 func NewSystemMemoryCommand() *cobra.Command {
-	return newResultCommand("memory", "Show memory usage", func(ctx context.Context, _ *cobra.Command) (commandResult, error) {
+	return newResultCommand("memory", "Show memory usage", func(ctx context.Context, _ *cobra.Command) (models.CommandResult, error) {
 		startedAt := time.Now()
 		logger.Debug("Memory inspection started")
 
 		info, err := system.CollectMemoryInfo(ctx)
 		if err != nil {
-			return commandResult{}, err
+			return models.CommandResult{}, err
 		}
 
 		logger.Debug("Memory inspection completed",
@@ -57,13 +58,13 @@ func NewSystemMemoryCommand() *cobra.Command {
 }
 
 func NewSystemUptimeCommand() *cobra.Command {
-	return newResultCommand("uptime", "Show system uptime", func(ctx context.Context, _ *cobra.Command) (commandResult, error) {
+	return newResultCommand("uptime", "Show system uptime", func(ctx context.Context, _ *cobra.Command) (models.CommandResult, error) {
 		startedAt := time.Now()
 		logger.Debug("Uptime inspection started")
 
 		uptime, err := system.CollectUptime(ctx)
 		if err != nil {
-			return commandResult{}, err
+			return models.CommandResult{}, err
 		}
 
 		value := struct {
@@ -81,13 +82,13 @@ func NewSystemUptimeCommand() *cobra.Command {
 }
 
 func NewDiskUsageCommand() *cobra.Command {
-	return newResultCommand("disk", "Show disk usage", func(ctx context.Context, _ *cobra.Command) (commandResult, error) {
+	return newResultCommand("disk", "Show disk usage", func(ctx context.Context, _ *cobra.Command) (models.CommandResult, error) {
 		startedAt := time.Now()
 		logger.Debug("Disk usage inspection started")
 
 		info, err := system.CollectDiskInfo(ctx, "/")
 		if err != nil {
-			return commandResult{}, err
+			return models.CommandResult{}, err
 		}
 
 		logger.Debug("Disk usage inspection completed",

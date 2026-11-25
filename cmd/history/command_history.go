@@ -9,10 +9,8 @@ import (
 	"path/filepath"
 	"time"
 
+	"domain-search/internal/security"
 	"domain-search/pkg/logger"
-	"domain-search/pkg/security"
-
-	"github.com/spf13/cobra"
 )
 
 const LogDirectory = "logs"
@@ -86,17 +84,16 @@ func CaptureCommandFileOutput(ctx context.Context, data []byte) {
 
 // RecordCommandExecution saves command execution history.
 func RecordCommandExecution(
-	cmd *cobra.Command,
+	commandName string,
 	args []string,
 	startedAt time.Time,
 	stdout string,
 	fileOutput string,
+	outputFile string,
 	executionErr error,
 ) {
-	commandName := "hostscope"
-
-	if cmd != nil {
-		commandName = cmd.CommandPath()
+	if commandName == "" {
+		commandName = "hostscope"
 	}
 
 	if stdout == "" {
@@ -124,20 +121,10 @@ func RecordCommandExecution(
 		}
 
 		if err := AppendRecords([]any{record}, commandErrorsFile); err != nil {
-			fmt.Fprintf(
-				os.Stderr,
-				"Could not save command error history: %v\n",
-				err,
-			)
+			fmt.Fprintf(os.Stderr, "Could not save command error history: %v\n", err)
 		}
 
 		return
-	}
-
-	outputFile := ""
-
-	if cmd != nil {
-		outputFile, _ = cmd.Flags().GetString("output")
 	}
 
 	record := commandHistoryRecord{
@@ -151,11 +138,7 @@ func RecordCommandExecution(
 	}
 
 	if err := AppendRecords([]any{record}, commandResultsFile); err != nil {
-		fmt.Fprintf(
-			os.Stderr,
-			"Could not save command result history: %v\n",
-			err,
-		)
+		fmt.Fprintf(os.Stderr, "Could not save command result history: %v\n", err)
 	}
 }
 

@@ -3,11 +3,12 @@
 package iis
 
 import (
+	"domain-search/models"
 	"os/exec"
 	"strings"
 )
 
-func resolveSSLCertificate(site IISSite) string {
+func resolveSSLCertificate(site models.IISSite) string {
 	output, err := exec.Command(
 		"netsh",
 		"http",

@@ -2,6 +2,8 @@
 
 package iis
 
-func resolveSSLCertificate(_ IISSite) string {
+import "domain-search/models"
+
+func resolveSSLCertificate(_ models.IISSite) string {
 	return ""
 }

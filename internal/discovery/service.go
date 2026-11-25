@@ -8,25 +8,25 @@ import (
 	"strings"
 	"time"
 
-	"domain-search/internal/dns"
 	"domain-search/internal/inspectors"
-	"domain-search/internal/inspectors/system"
 	"domain-search/internal/server"
 	"domain-search/models"
+	"domain-search/pkg/dns"
 	"domain-search/pkg/logger"
+	"domain-search/pkg/system"
 )
 
 type Service struct {
-	inspectors    []inspectors.Inspector
-	serverService *server.Service
-	verifier      *dns.Verifier
+	inspectors     []inspectors.Inspector
+	serverDetector *server.Detector
+	verifier       *dns.Resolver
 }
 
 func NewService(list []inspectors.Inspector) *Service {
 	return &Service{
-		inspectors:    list,
-		serverService: server.NewService(),
-		verifier:      dns.NewVerifier(),
+		inspectors:     list,
+		serverDetector: server.NewDetector(),
+		verifier:       dns.NewResolver(),
 	}
 }
 
@@ -34,12 +34,6 @@ type LocalService = Service
 
 func NewLocalService() *LocalService {
 	return NewService(platformInspectors())
-}
-
-type InspectOptions struct {
-	Domains bool
-	Config  bool
-	Version bool
 }
 
 // InspectorNames returns the names of all registered inspectors.
@@ -53,17 +47,17 @@ func (s *Service) InspectorNames() []string {
 	return names
 }
 
-func (s *Service) Inspect(ctx context.Context, name string, options InspectOptions) (Inspection, error) {
+func (s *Service) Inspect(ctx context.Context, name string, options models.InspectOptions) (models.Inspection, error) {
 	startedAt := time.Now()
 	name = strings.ToLower(strings.TrimSpace(name))
 
 	logger.Debug("Web server inspection started", "server", name)
 
 	if err := ctx.Err(); err != nil {
-		return Inspection{}, err
+		return models.Inspection{}, err
 	}
 
-	result := Inspection{
+	result := models.Inspection{
 		Server:  name,
 		Domains: []models.Domain{},
 		Configs: []string{},
@@ -193,41 +187,36 @@ func (s *Service) Inspect(ctx context.Context, name string, options InspectOptio
 	return result, nil
 }
 
-type commandSpec struct {
-	name string
-	args []string
-}
-
 // versionCommands returns executable names appropriate for the
 // current operating system.
-func versionCommands(service string) ([]commandSpec, error) {
+func versionCommands(service string) ([]models.CommandSpec, error) {
 	service = strings.ToLower(strings.TrimSpace(service))
 
 	switch runtime.GOOS {
 	case "windows":
 		switch service {
 		case "nginx":
-			return []commandSpec{
-				{name: "nginx.exe", args: []string{"-v"}},
+			return []models.CommandSpec{
+				{Name: "nginx.exe", Args: []string{"-v"}},
 			}, nil
 
 		case "apache":
-			return []commandSpec{
-				{name: "httpd.exe", args: []string{"-v"}},
+			return []models.CommandSpec{
+				{Name: "httpd.exe", Args: []string{"-v"}},
 			}, nil
 		}
 
 	case "linux":
 		switch service {
 		case "nginx":
-			return []commandSpec{
-				{name: "nginx", args: []string{"-v"}},
+			return []models.CommandSpec{
+				{Name: "nginx", Args: []string{"-v"}},
 			}, nil
 
 		case "apache":
-			return []commandSpec{
-				{name: "apachectl", args: []string{"-v"}},
-				{name: "httpd", args: []string{"-v"}},
+			return []models.CommandSpec{
+				{Name: "apachectl", Args: []string{"-v"}},
+				{Name: "httpd", Args: []string{"-v"}},
 			}, nil
 		}
 	}
@@ -241,7 +230,7 @@ func versionCommands(service string) ([]commandSpec, error) {
 
 func runFirstCommand(
 	ctx context.Context,
-	commands []commandSpec,
+	commands []models.CommandSpec,
 ) (string, error) {
 	var lastErr error
 
@@ -250,7 +239,7 @@ func runFirstCommand(
 			return "", err
 		}
 
-		cmd := exec.CommandContext(ctx, command.name, command.args...)
+		cmd := exec.CommandContext(ctx, command.Name, command.Args...)
 
 		output, err := cmd.CombinedOutput()
 
@@ -264,7 +253,7 @@ func runFirstCommand(
 
 		lastErr = fmt.Errorf(
 			"%s failed: %w; output: %s",
-			command.name,
+			command.Name,
 			err,
 			strings.TrimSpace(string(output)),
 		)
@@ -277,14 +266,14 @@ func runFirstCommand(
 	return "", lastErr
 }
 
-func (s *Service) Discover(ctx context.Context) (Result, error) {
+func (s *Service) Discover(ctx context.Context) (models.Result, error) {
 	startedAt := time.Now()
 
 	logger.Debug("Discovery lifecycle started")
 
 	result := newResult()
 
-	info, err := s.serverService.GetInfo(ctx)
+	info, err := s.serverDetector.Detect(ctx)
 	if err != nil {
 		logger.Debug(
 			"Server information discovery failed",
@@ -400,7 +389,7 @@ func (s *Service) Discover(ctx context.Context) (Result, error) {
 
 		logger.Debug("Verifying domain DNS", "domain", domain.Name)
 
-		domainResult := DomainResult{
+		domainResult := models.DomainResult{
 			Domain: domain,
 			DNS: s.verifier.Verify(
 				ctx,
@@ -429,7 +418,7 @@ func (s *Service) Discover(ctx context.Context) (Result, error) {
 	return result, nil
 }
 
-func appendWarnings(result *Result, warnings []string) {
+func appendWarnings(result *models.Result, warnings []string) {
 	for _, warning := range warnings {
 		result.Warnings = append(result.Warnings, warning)
 		result.ErrorEvents = append(
@@ -439,11 +428,11 @@ func appendWarnings(result *Result, warnings []string) {
 	}
 }
 
-func newResult() Result {
-	return Result{
-		ScanResponse: ScanResponse{
-			Servers: []ServerInfo{},
-			System: SystemInfo{
+func newResult() models.Result {
+	return models.Result{
+		ScanResponse: models.ScanResponse{
+			Servers: []models.ServerInfo{},
+			System: models.SystemInfo{
 				IPv4: []string{},
 				IPv6: []string{},
 			},
@@ -451,7 +440,7 @@ func newResult() Result {
 		Status:           "completed",
 		ScannedAt:        time.Now().UTC(),
 		DetectedServices: []string{},
-		Domains:          []DomainResult{},
+		Domains:          []models.DomainResult{},
 		Warnings:         []string{},
 	}
 }

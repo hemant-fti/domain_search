@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"domain-search/models"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -12,7 +13,7 @@ import (
 )
 
 func TestResultCommandCompactJSON(t *testing.T) {
-	cmd := newResultCommand("result", "test result", func(context.Context, *cobra.Command) (commandResult, error) {
+	cmd := newResultCommand("result", "test result", func(context.Context, *cobra.Command) (models.CommandResult, error) {
 		return textResult(struct {
 			Value string `json:"value"`
 		}{"ok"}, "human output"), nil
@@ -35,7 +36,7 @@ func TestResultCommandCompactJSON(t *testing.T) {
 
 func TestResultCommandWritesSelectedOutputFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "result.jsonl")
-	cmd := newResultCommand("result", "test result", func(context.Context, *cobra.Command) (commandResult, error) {
+	cmd := newResultCommand("result", "test result", func(context.Context, *cobra.Command) (models.CommandResult, error) {
 		return textResult(map[string]string{"value": "ok"}, "human output"), nil
 	})
 	var stdout strings.Builder
@@ -63,9 +64,9 @@ func TestResultCommandWritesSelectedOutputFile(t *testing.T) {
 
 func TestResultCommandRejectsNonpositiveTimeout(t *testing.T) {
 	called := false
-	cmd := newResultCommand("result", "test result", func(context.Context, *cobra.Command) (commandResult, error) {
+	cmd := newResultCommand("result", "test result", func(context.Context, *cobra.Command) (models.CommandResult, error) {
 		called = true
-		return commandResult{}, nil
+		return models.CommandResult{}, nil
 	})
 	cmd.SilenceErrors = true
 	cmd.SilenceUsage = true

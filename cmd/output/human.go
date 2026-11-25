@@ -9,6 +9,7 @@ import (
 	"github.com/fatih/color"
 
 	"domain-search/internal/discovery"
+	"domain-search/models"
 )
 
 // Options controls how the human-readable report is rendered.
@@ -44,7 +45,7 @@ const (
 
 // WriteHuman renders a human-readable scan report. It only formats;
 // persisting the result is the caller's responsibility.
-func WriteHuman(out io.Writer, result discovery.Result) error {
+func WriteHuman(out io.Writer, result models.Result) error {
 	var b strings.Builder
 
 	writeHeader(&b, result, unicodeSymbols)
@@ -64,7 +65,7 @@ func WriteHuman(out io.Writer, result discovery.Result) error {
 
 // ---------- sections ----------
 
-func writeHeader(w io.Writer, r discovery.Result, sym symbols) {
+func writeHeader(w io.Writer, r models.Result, sym symbols) {
 	fmt.Fprintln(w)
 	fmt.Fprintf(w, "  %s  %s\n", cyan("hostscope"), dim("· Server Discovery Report"))
 	fmt.Fprintf(w, "  %s\n", dim(strings.Repeat(rule(sym), ruleWidth)))
@@ -82,7 +83,7 @@ func writeHeader(w io.Writer, r discovery.Result, sym symbols) {
 
 type dnsTally struct{ matched, elsewhere, unresolved int }
 
-func dnsCounts(r discovery.Result) dnsTally {
+func dnsCounts(r models.Result) dnsTally {
 	var t dnsTally
 	for _, d := range r.Domains {
 		switch d.DNS.Status {
@@ -97,7 +98,7 @@ func dnsCounts(r discovery.Result) dnsTally {
 	return t
 }
 
-func writeSummary(w io.Writer, r discovery.Result, t dnsTally, sym symbols) {
+func writeSummary(w io.Writer, r models.Result, t dnsTally, sym symbols) {
 	total := len(r.Domains)
 	if r.TotalDomains > total {
 		total = r.TotalDomains
@@ -118,7 +119,7 @@ func writeSummary(w io.Writer, r discovery.Result, t dnsTally, sym symbols) {
 	fmt.Fprintf(w, "  %s\n\n", strings.Join(parts, "   "))
 }
 
-func writeWarnings(w io.Writer, r discovery.Result, sym symbols) {
+func writeWarnings(w io.Writer, r models.Result, sym symbols) {
 	if len(r.Warnings) == 0 {
 		return
 	}
@@ -131,7 +132,9 @@ func writeWarnings(w io.Writer, r discovery.Result, sym symbols) {
 	fmt.Fprintln(w)
 }
 
-func writeServices(w io.Writer, r discovery.Result, sym symbols) {
+
+
+func writeServices(w io.Writer, r models.Result, sym symbols) {
 	section(w, "SERVICES")
 
 	if len(r.Servers) == 0 {
@@ -158,7 +161,7 @@ func writeServices(w io.Writer, r discovery.Result, sym symbols) {
 	fmt.Fprintln(w)
 }
 
-func writeWebsites(w io.Writer, r discovery.Result, sym symbols) {
+func writeWebsites(w io.Writer, r models.Result, sym symbols) {
 	section(w, fmt.Sprintf("WEBSITES (%d)", len(r.Domains)))
 
 	if len(r.Domains) == 0 {
@@ -277,7 +280,7 @@ func writeTable(w io.Writer, header []string, rows [][]cell) {
 	}
 }
 
-func writeSystem(w io.Writer, r discovery.Result, sym symbols) {
+func writeSystem(w io.Writer, r models.Result, sym symbols) {
 	s := r.System
 	section(w, "SYSTEM")
 

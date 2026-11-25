@@ -17,11 +17,11 @@ type statusInspector interface {
 func scanInspector(
 	ctx context.Context,
 	inspector inspectors.Inspector,
-) (ServerInfo, []models.Domain, []string, error) {
+) (models.ServerInfo, []models.Domain, []string, error) {
 
-	result := ServerInfo{
+	result := models.ServerInfo{
 		Server:  inspector.Name(),
-		Domains: []DomainInfo{},
+		Domains: []models.DomainInfo{},
 	}
 
 	var found []models.Domain
@@ -64,7 +64,7 @@ func scanInspector(
 	}
 
 	for _, domain := range domains {
-		result.Domains = append(result.Domains, DomainInfo{
+		result.Domains = append(result.Domains, models.DomainInfo{
 			Domain:       domain.Name,
 			Aliases:      nonNilStrings(domain.Aliases),
 			ConfigFile:   domain.ConfigPath,
