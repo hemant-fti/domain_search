@@ -7,8 +7,16 @@ run:
 test:
 	go test ./...
 
+ifeq ($(OS),Windows_NT)
+    BINARY_NAME := hostscope.exe
+    BUILD_ENV :=
+else
+    BINARY_NAME := hostscope
+    BUILD_ENV := CGO_ENABLED=0
+endif
+
 build:
-	go build -o bin/hostscope.exe ./cmd/hostscope
+	$(BUILD_ENV) go build -o $(BINARY_NAME) ./cmd/main
 
 build-agent:
 	go build -trimpath -ldflags="-s -w" -o hostscope.exe ./cmd/main

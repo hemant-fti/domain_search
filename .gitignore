@@ -9,5 +9,5 @@ bin/
 
 dom
 /hostscope
-/hostscope-windows-amd64.exe
+/hostscope.exe
 /logs/
