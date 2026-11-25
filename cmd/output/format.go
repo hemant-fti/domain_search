@@ -25,22 +25,9 @@ type symbols struct {
 	ok, warn, fail, up, down, full, empty, ellipsis, dash, rule string
 }
 
-var (
-	unicodeSymbols = symbols{
-		ok: "✔", warn: "⚠", fail: "✖", up: "●", down: "○",
-		full: "█", empty: "░", ellipsis: "…", dash: "—", rule: "─",
-	}
-	asciiSymbols = symbols{
-		ok: "+", warn: "!", fail: "x", up: "*", down: "o",
-		full: "#", empty: "-", ellipsis: "...", dash: "-", rule: "-",
-	}
-)
-
-func symbolsFor(opts Options) symbols {
-	if opts.ASCII {
-		return asciiSymbols
-	}
-	return unicodeSymbols
+var unicodeSymbols = symbols{
+	ok: "✔", warn: "⚠", fail: "✖", up: "●", down: "○",
+	full: "█", empty: "░", ellipsis: "…", dash: "—", rule: "─",
 }
 
 type styleFunc func(a ...interface{}) string

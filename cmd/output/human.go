@@ -28,20 +28,19 @@ const (
 )
 
 type renderer struct {
-	w    io.Writer
-	sym  symbols
-	opts Options
+	w   io.Writer
+	sym symbols
 }
 
-func newRenderer(w io.Writer, opts Options) *renderer {
-	return &renderer{w: w, sym: symbolsFor(opts), opts: opts}
+func newRenderer(w io.Writer) *renderer {
+	return &renderer{w: w, sym: unicodeSymbols}
 }
 
 // render builds the report in memory and writes it once, so callers get a
 // real error instead of a half-written report.
-func render(out io.Writer, opts Options, build func(*renderer)) error {
+func render(out io.Writer, build func(*renderer)) error {
 	var b strings.Builder
-	build(newRenderer(&b, opts))
+	build(newRenderer(&b))
 
 	if _, err := io.WriteString(out, b.String()); err != nil {
 		return fmt.Errorf("write report: %w", err)
@@ -53,8 +52,8 @@ func render(out io.Writer, opts Options, build func(*renderer)) error {
 
 // WriteHuman renders the full scan report. It only formats; persisting
 // the result is the caller's responsibility.
-func WriteHuman(out io.Writer, result models.Result, opts Options) error {
-	return render(out, opts, func(r *renderer) {
+func WriteHuman(out io.Writer, result models.Result) error {
+	return render(out, func(r *renderer) {
 		r.header(result)
 		r.summary(totalDomains(result), dnsCounts(result.Domains))
 		r.warnings(result.Warnings)
@@ -71,7 +70,7 @@ func WriteDomains(out io.Writer, domains []models.Domain) error {
 		results[i] = models.DomainResult{Domain: d}
 	}
 
-	return render(out, Options{}, func(r *renderer) {
+	return render(out, func(r *renderer) {
 		r.commandHeader("Server Discovery Report")
 		r.summary(len(results), dnsCounts(results))
 		r.websites(results)
@@ -79,32 +78,32 @@ func WriteDomains(out io.Writer, domains []models.Domain) error {
 }
 
 func WriteSystemHeader(w io.Writer) {
-	newRenderer(w, Options{}).commandHeader("System Information")
+	newRenderer(w).commandHeader("System Information")
 }
 
 func WriteCPU(out io.Writer, info models.CPUInfo) error {
-	return render(out, Options{}, func(r *renderer) {
+	return render(out, func(r *renderer) {
 		r.commandHeader("System Information")
 		r.cpu(info.Model, info.Cores, info.Threads)
 	})
 }
 
 func WriteMemory(out io.Writer, info models.MemoryInfo) error {
-	return render(out, Options{}, func(r *renderer) {
+	return render(out, func(r *renderer) {
 		r.commandHeader("System Information")
 		r.memory(info)
 	})
 }
 
 func WriteUptime(out io.Writer, seconds uint64) error {
-	return render(out, Options{}, func(r *renderer) {
+	return render(out, func(r *renderer) {
 		r.commandHeader("System Information")
 		r.uptime(seconds)
 	})
 }
 
 func WriteDisk(out io.Writer, info models.DiskInfo) error {
-	return render(out, Options{}, func(r *renderer) {
+	return render(out, func(r *renderer) {
 		r.commandHeader("System Information")
 		r.disk(info)
 	})
@@ -112,7 +111,7 @@ func WriteDisk(out io.Writer, info models.DiskInfo) error {
 
 // WriteSystem renders all system information under one common header.
 func WriteSystem(out io.Writer, info models.SystemInfo) error {
-	return render(out, Options{}, func(r *renderer) {
+	return render(out, func(r *renderer) {
 		r.commandHeader("System Information")
 		r.cpu(info.CPUModel, info.Cores, info.Threads)
 		r.memory(info.Memory)
@@ -269,10 +268,8 @@ func (r *renderer) websites(domains []models.DomainResult) {
 	}
 	writeTable(r.w, header, rows)
 
-	if r.opts.Verbose {
-		for _, d := range domains {
-			r.websiteDetails(d)
-		}
+	for _, d := range domains {
+		r.websiteDetails(d)
 	}
 	fmt.Fprintln(r.w)
 }
@@ -386,4 +383,22 @@ func (r *renderer) processMemory() {
 	r.kv(2, keyWidth, "Runtime memory", fmt.Sprintf("%.2f MB", m.SysMB))
 	r.kv(2, keyWidth, "Heap reserved", fmt.Sprintf("%.2f MB", m.HeapSysMB))
 	fmt.Fprintln(r.w)
+}
+
+// Section writers for composing custom system reports under one header.
+
+func WriteCPUSection(w io.Writer, info models.CPUInfo) {
+	newRenderer(w).cpu(info.Model, info.Cores, info.Threads)
+}
+
+func WriteMemorySection(w io.Writer, info models.MemoryInfo) {
+	newRenderer(w).memory(info)
+}
+
+func WriteUptimeSection(w io.Writer, seconds uint64) {
+	newRenderer(w).uptime(seconds)
+}
+
+func WriteDiskSection(w io.Writer, info models.DiskInfo) {
+	newRenderer(w).disk(info)
 }

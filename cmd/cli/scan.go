@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"fmt"
+	"os"
 	"time"
 
 	"domain-search/cmd/history"
@@ -45,7 +46,7 @@ func RunDiscovery(cmd *cobra.Command, ctx context.Context) error {
 
 	history.SetCommandResult(ctx, result)
 
-	if err := output.WriteHuman(cmd.OutOrStdout(), result); err != nil {
+	if err := output.WriteHuman(os.Stdout, result); err != nil {
 		return fmt.Errorf("write discovery result: %w", err)
 	}
 
