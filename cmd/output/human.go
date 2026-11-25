@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"strings"
 
 	"domain-search/internal/discovery"
@@ -279,16 +280,70 @@ func (r *renderer) websites(domains []models.DomainResult) {
 func (r *renderer) websiteDetails(d models.DomainResult) {
 	fmt.Fprintf(r.w, "\n  %s\n", bold(DisplayValue(domainName(d))))
 
-	kv := func(key, value string) { r.kv(detailIndent, detailKeyWidth, key, value) }
+	kv := func(key, value string) {
+		r.kv(detailIndent, detailKeyWidth, key, value)
+	}
 
 	if strings.EqualFold(d.Source, "iis") {
 		kv("Website ID", DisplayValue(d.ID))
 		kv("Website name", DisplayValue(d.WebsiteName))
 		kv("Status", DisplayValue(d.Status))
 		kv("Hostname", DisplayValue(d.Hostname))
-		kv("Bindings", DisplayList(uniqueStrings(d.Binding)))
+
+		if len(d.Bindings) > 0 {
+			var bindingGroups []string
+
+			for _, binding := range d.Bindings {
+				ips := binding.ResolvedIPs
+
+				if len(ips) == 0 {
+					ips = []string{binding.IP}
+				}
+
+				var addresses []string
+
+				for _, ip := range ips {
+					if net.ParseIP(ip) == nil {
+						continue
+					}
+
+					if strings.Contains(ip, ":") {
+						ip = "[" + ip + "]"
+					}
+
+					addresses = append(addresses, ip)
+				}
+
+				if len(addresses) == 0 {
+					addresses = []string{binding.IP}
+				}
+
+				description := fmt.Sprintf(
+					"%s :%d",
+					strings.ToUpper(binding.Protocol),
+					binding.Port,
+				)
+
+				if binding.Hostname != "" {
+					description = fmt.Sprintf(
+						"%s %s :%d",
+						strings.ToUpper(binding.Protocol),
+						binding.Hostname,
+						binding.Port,
+					)
+				}
+
+				description += " (" + strings.Join(uniqueStrings(addresses), ", ") + ")"
+
+				bindingGroups = append(bindingGroups, description)
+			}
+
+			kv("Bindings", DisplayList(uniqueStrings(bindingGroups)))
+		}
+
 		kv("Physical path", DisplayValue(d.Path))
 	}
+
 	kv("Config file", DisplayValue(d.ConfigPath))
 	kv("Proxy target", DisplayValue(d.ProxyTarget))
 	kv("SSL certificate", DisplayValue(d.SSLCertificate))

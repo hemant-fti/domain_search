@@ -3,6 +3,8 @@ package iis
 import (
 	"domain-search/models"
 	"encoding/xml"
+	"fmt"
+	"net"
 	"strconv"
 	"strings"
 )
@@ -26,16 +28,17 @@ func ParseWithStatuses(
 
 	for _, site := range configuration.SystemApplicationHost.Sites.Sites {
 		var hosts []string
-		var bindings []string
+		var bindings []models.Binding
 		var ports []int
 
 		seenHosts := make(map[string]bool)
 		seenPorts := make(map[int]bool)
+		seenBindings := make(map[string]bool)
 
 		var sslCertificate string
 
 		for _, binding := range site.Bindings.Bindings {
-			host, port, valid := parseBindingInformation(
+			ip, port, hostname, valid := parseBindingInformation(
 				binding.BindingInformation,
 			)
 
@@ -43,25 +46,54 @@ func ParseWithStatuses(
 				continue
 			}
 
-			bindingDescription := formatIISBinding(binding)
-			if bindingDescription != "" {
-				bindings = append(bindings, bindingDescription)
+			protocol := strings.ToLower(strings.TrimSpace(binding.Protocol))
+
+			if protocol == "" {
+				continue
 			}
 
-			bindings = append(bindings, bindingDescription)
+			hostname = strings.TrimSpace(hostname)
 
-			if host != "" && host != "*" &&
-				!seenHosts[strings.ToLower(host)] {
-				hosts = append(hosts, host)
-				seenHosts[strings.ToLower(host)] = true
+			// Build structured IIS binding.
+			structuredBinding := resolveBinding(
+				protocol,
+				ip,
+				port,
+				hostname,
+			)
+
+			// Prevent duplicate bindings.
+			key := fmt.Sprintf(
+				"%s|%s|%d|%s",
+				protocol,
+				ip,
+				port,
+				strings.ToLower(hostname),
+			)
+
+			if !seenBindings[key] {
+				bindings = append(bindings, structuredBinding)
+				seenBindings[key] = true
 			}
 
+			// Collect actual website hostnames.
+			if hostname != "" && hostname != "*" {
+				hostKey := strings.ToLower(hostname)
+
+				if !seenHosts[hostKey] {
+					hosts = append(hosts, hostname)
+					seenHosts[hostKey] = true
+				}
+			}
+
+			// Collect unique ports.
 			if !seenPorts[port] {
 				ports = append(ports, port)
 				seenPorts[port] = true
 			}
 
-			if strings.EqualFold(binding.Protocol, "https") &&
+			// Extract HTTPS certificate.
+			if strings.EqualFold(protocol, "https") &&
 				binding.CertificateHash != "" {
 				sslCertificate = normalizeCertificateHash(
 					binding.CertificateHash,
@@ -69,6 +101,7 @@ func ParseWithStatuses(
 			}
 		}
 
+		// Ignore websites without valid bindings.
 		if len(bindings) == 0 {
 			continue
 		}
@@ -88,11 +121,13 @@ func ParseWithStatuses(
 			status = "Unknown"
 		}
 
+		// First hostname becomes primary hostname.
 		hostname := ""
 		if len(hosts) > 0 {
 			hostname = hosts[0]
 		}
 
+		// Remaining hostnames become aliases.
 		var aliases []string
 		if len(hosts) > 1 {
 			aliases = append(aliases, hosts[1:]...)
@@ -103,7 +138,7 @@ func ParseWithStatuses(
 			Name:        hostname,
 			WebsiteName: site.Name,
 			Status:      status,
-			Binding:     bindings,
+			Bindings:    bindings,
 			Path:        documentRoot,
 			Hostname:    hostname,
 
@@ -193,33 +228,29 @@ func findProxyTarget(rewrite models.IISRewrite) string {
 // *:80:example.com
 // 127.0.0.1:443:example.com
 // *:443:www.example.com
-func parseBindingInformation(value string) (
-	host string,
-	port int,
-	ok bool,
-) {
-	lastColon := strings.LastIndex(value, ":")
-	if lastColon == -1 {
-		return "", 0, false
+
+func parseBindingInformation(
+	value string,
+) (ip string, port int, hostname string, valid bool) {
+	parts := strings.SplitN(value, ":", 3)
+
+	if len(parts) != 3 {
+		return "", 0, "", false
 	}
 
-	host = strings.TrimSpace(value[lastColon+1:])
-
-	remaining := value[:lastColon]
-
-	portColon := strings.LastIndex(remaining, ":")
-	if portColon == -1 {
-		return "", 0, false
+	parsedPort, err := strconv.Atoi(strings.TrimSpace(parts[1]))
+	if err != nil || parsedPort < 1 || parsedPort > 65535 {
+		return "", 0, "", false
 	}
 
-	portValue := remaining[portColon+1:]
+	ip = strings.TrimSpace(parts[0])
+	hostname = strings.TrimSpace(parts[2])
 
-	port, err := strconv.Atoi(portValue)
-	if err != nil || port <= 0 {
-		return "", 0, false
+	if ip == "" {
+		ip = "*"
 	}
 
-	return host, port, true
+	return ip, parsedPort, hostname, true
 }
 
 func normalizeCertificateHash(hash string) string {
@@ -230,27 +261,25 @@ func normalizeCertificateHash(hash string) string {
 	return strings.ToUpper(hash)
 }
 
-func formatIISBinding(binding models.IISBinding) string {
-	host, port, ok := parseBindingInformation(
-		binding.BindingInformation,
-	)
-	if !ok {
-		return ""
+func resolveBinding(protocol, ip string, port int, hostname string) models.Binding {
+	ip = strings.TrimSpace(ip)
+
+	binding := models.Binding{
+		Protocol: protocol,
+		IP:       ip,
+		Port:     port,
+		Hostname: hostname,
 	}
 
-	parts := strings.SplitN(
-		binding.BindingInformation,
-		":",
-		3,
-	)
-
-	ip := strings.TrimSpace(parts[0])
-
-	address := ip + ":" + strconv.Itoa(port)
-
-	if host != "" {
-		address = host + " on " + address
+	if isWildcardIP(ip) {
+		binding.ResolvedIPs = detectLocalIPs()
+		return binding
 	}
 
-	return address + " (" + strings.ToLower(binding.Protocol) + ")"
+	// Explicitly assigned IP: show only that IP.
+	if parsed := net.ParseIP(ip); parsed != nil {
+		binding.ResolvedIPs = []string{parsed.String()}
+	}
+
+	return binding
 }

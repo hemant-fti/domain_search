@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"time"
 
@@ -150,7 +151,7 @@ func runSystemInfo(cmd *cobra.Command) error {
 	}
 
 	for _, w := range warnings {
-		human.WriteString("  ⚠ " + w + "\n")
+		fmt.Fprintf(&human, "  ⚠ %s\n", w)
 	}
 
 	return writeCommandOutput(cmd, "", []byte(human.String()))
