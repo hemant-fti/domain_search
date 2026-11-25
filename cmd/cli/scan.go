@@ -5,7 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	cmdoutput "domain-search/cmd/output"
+	"domain-search/cmd/history"
+	"domain-search/cmd/output"
 	"domain-search/internal/discovery"
 	"domain-search/pkg/logger"
 
@@ -42,10 +43,9 @@ func RunDiscovery(cmd *cobra.Command, ctx context.Context) error {
 		return fmt.Errorf("discovery failed: %w", err)
 	}
 
-	if err := cmdoutput.WriteHuman(
-		cmd.OutOrStdout(),
-		result,
-	); err != nil {
+	history.SetCommandResult(ctx, result)
+
+	if err := output.WriteHuman(cmd.OutOrStdout(), result); err != nil {
 		return fmt.Errorf("write discovery result: %w", err)
 	}
 

@@ -13,9 +13,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func executeApplication(ctx context.Context) error {
+func executeApplication(ctx context.Context) (any, error) {
 	var stdout bytes.Buffer
 	var fileOutput bytes.Buffer
+	var result any
 
 	ctx = context.WithValue(
 		ctx,
@@ -23,8 +24,16 @@ func executeApplication(ctx context.Context) error {
 		&fileOutput,
 	)
 
+	ctx = context.WithValue(
+		ctx,
+		history.CommandResultCaptureKey{},
+		&result,
+	)
+
 	command := rootcli.NewRootCommand()
 	command.SetContext(ctx)
+
+	// Preserve human-readable terminal output.
 	command.SetOut(io.MultiWriter(os.Stdout, &stdout))
 	command.SetErr(os.Stderr)
 
@@ -44,7 +53,7 @@ func executeApplication(ctx context.Context) error {
 		executedCommand.CommandPath(),
 		os.Args[1:],
 		startedAt,
-		stdout.String(),
+		result,
 		fileOutput.String(),
 		getOutputFile(executedCommand),
 		err,
@@ -56,7 +65,7 @@ func executeApplication(ctx context.Context) error {
 			"duration", duration.String(),
 		)
 
-		return err
+		return nil, err
 	}
 
 	logger.Info("Command execution completed",
@@ -64,7 +73,7 @@ func executeApplication(ctx context.Context) error {
 		"duration", duration.String(),
 	)
 
-	return nil
+	return result, nil
 }
 
 func getOutputFile(cmd *cobra.Command) string {

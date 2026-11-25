@@ -10,8 +10,4 @@ bin/
 dom
 /hostscope
 /hostscope-windows-amd64.exe
-/scan-errors.jsonl
-/scan-results.jsonl
-/command-results.jsonl
-/command-errors.jsonl
 /logs/

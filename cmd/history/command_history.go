@@ -25,30 +25,19 @@ var (
 		LogDirectory,
 		"command-errors.jsonl",
 	)
-
-	ScanResultsFile = filepath.Join(
-		LogDirectory,
-		"scan-results.jsonl",
-	)
-
-	ScanErrorsFile = filepath.Join(
-		LogDirectory,
-		"scan-errors.jsonl",
-	)
 )
 
 type CommandOutputCaptureKey struct{}
 
 type commandHistoryRecord struct {
-	Command    string    `json:"command"`
-	Args       []string  `json:"args,omitempty"`
-	Status     string    `json:"status"`
-	ExecutedAt time.Time `json:"executed_at"`
-	DurationMS int64     `json:"duration_ms"`
-	Output     string    `json:"output,omitempty"`
-	OutputFile string    `json:"output_file,omitempty"`
+	Command    string          `json:"command"`
+	Args       []string        `json:"args,omitempty"`
+	Status     string          `json:"status"`
+	ExecutedAt time.Time       `json:"executed_at"`
+	DurationMS int64           `json:"duration_ms"`
+	Output     json.RawMessage `json:"output,omitempty"`
+	OutputFile string          `json:"output_file,omitempty"`
 }
-
 type commandErrorRecord struct {
 	Command    string    `json:"command,omitempty"`
 	Args       []string  `json:"args,omitempty"`
@@ -87,17 +76,13 @@ func RecordCommandExecution(
 	commandName string,
 	args []string,
 	startedAt time.Time,
-	stdout string,
+	result any,
 	fileOutput string,
 	outputFile string,
 	executionErr error,
 ) {
 	if commandName == "" {
 		commandName = "hostscope"
-	}
-
-	if stdout == "" {
-		stdout = fileOutput
 	}
 
 	duration := time.Since(startedAt).Milliseconds()
@@ -115,15 +100,16 @@ func RecordCommandExecution(
 		record.Error.Code = "COMMAND_FAILED"
 		record.Error.Message = security.RedactText(executionErr.Error())
 
-		if stdout != "" {
-			record.Error.Message += "\nOutput: " +
-				security.RedactText(stdout)
-		}
-
 		if err := AppendRecords([]any{record}, commandErrorsFile); err != nil {
 			fmt.Fprintf(os.Stderr, "Could not save command error history: %v\n", err)
 		}
 
+		return
+	}
+
+	outputJSON, err := json.Marshal(result)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Could not marshal command result: %v\n", err)
 		return
 	}
 
@@ -133,7 +119,7 @@ func RecordCommandExecution(
 		Status:     "completed",
 		ExecutedAt: executedAt,
 		DurationMS: duration,
-		Output:     security.RedactText(stdout),
+		Output:     json.RawMessage(security.RedactText(string(outputJSON))),
 		OutputFile: outputFile,
 	}
 
@@ -180,4 +166,19 @@ func MarshalJSON(result any, pretty bool) ([]byte, error) {
 	}
 
 	return buffer.Bytes(), nil
+}
+
+type CommandResultCaptureKey struct{}
+
+func SetCommandResult(ctx context.Context, result any) {
+	if ctx == nil {
+		return
+	}
+
+	target, ok := ctx.Value(CommandResultCaptureKey{}).(*any)
+	if !ok {
+		return
+	}
+
+	*target = result
 }
