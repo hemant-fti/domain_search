@@ -48,12 +48,7 @@ func ParseWithStatuses(config string, configPath string, statuses map[string]str
 			hostname = strings.TrimSpace(hostname)
 
 			// Build structured IIS binding.
-			structuredBinding := resolveBinding(
-				protocol,
-				ip,
-				port,
-				hostname,
-			)
+			structuredBinding := resolveBinding(protocol, ip, port, hostname)
 
 			// Prevent duplicate bindings.
 			key := fmt.Sprintf(
