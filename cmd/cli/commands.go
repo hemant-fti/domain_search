@@ -6,8 +6,8 @@ import (
 	"os"
 	"time"
 
-	"domain-search/cmd/history"
 	"domain-search/models"
+	"domain-search/pkg/logger"
 
 	"github.com/spf13/cobra"
 )
@@ -41,7 +41,7 @@ func newResultCommand(use, short string, run func(context.Context, *cobra.Comman
 
 			useJSON := options.Jsonl || options.Compact || cmd.Flags().Changed("Pretty")
 			if useJSON {
-				data, err := history.MarshalJSON(result.Value, options.Pretty)
+				data, err := logger.MarshalJSON(result.Value, options.Pretty)
 				if err != nil {
 					return fmt.Errorf("encode command result: %w", err)
 				}
@@ -75,15 +75,20 @@ func newResultCommand(use, short string, run func(context.Context, *cobra.Comman
 func writeCommandOutput(cmd *cobra.Command, path string, data []byte) error {
 	if path != "" {
 		if err := os.WriteFile(path, data, 0600); err != nil {
-			return fmt.Errorf("write Output file %s: %w", path, err)
+			return fmt.Errorf("write output file %s: %w", path, err)
 		}
 
-		history.CaptureCommandFileOutput(cmd.Context(), data)
+		logger.Info(
+			"Command output written",
+			"output_file", path,
+			"size_bytes", len(data),
+		)
+
 		return nil
 	}
 
 	if _, err := cmd.OutOrStdout().Write(data); err != nil {
-		return err
+		return fmt.Errorf("write command output: %w", err)
 	}
 
 	return nil

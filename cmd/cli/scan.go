@@ -3,57 +3,46 @@ package cli
 import (
 	"context"
 	"fmt"
-	"os"
+	"strings"
 	"time"
 
-	"domain-search/cmd/history"
 	"domain-search/cmd/output"
 	"domain-search/internal/discovery"
+	"domain-search/models"
 	"domain-search/pkg/logger"
 
 	"github.com/spf13/cobra"
 )
 
 func NewScanCommand() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:     "scan",
-		Short:   "Discover services and system information",
-		Long:    "Scan the local server and display discovered services and system information in a human-readable format.",
-		Example: "  domain-search scan",
-		Args:    cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			ctx, cancel := context.WithTimeout(
-				cmd.Context(),
-				DefaultTimeout,
+	return newResultCommand(
+		"scan",
+		"Discover services and system information",
+		func(ctx context.Context, _ *cobra.Command) (models.CommandResult, error) {
+			startedAt := time.Now()
+
+			service := discovery.NewLocalService()
+
+			result, err := service.Discover(ctx)
+			if err != nil {
+				return models.CommandResult{}, fmt.Errorf(
+					"discovery failed: %w", err,
+				)
+			}
+
+			var human strings.Builder
+
+			if err := output.WriteHuman(&human, result); err != nil {
+				return models.CommandResult{}, err
+			}
+
+			logger.Info(
+				"Scan completed",
+				"duration_ms", time.Since(startedAt).Milliseconds(),
+				"output", result,
 			)
-			defer cancel()
 
-			return RunDiscovery(cmd, ctx)
+			return textResult(result, human.String()), nil
 		},
-	}
-
-	return cmd
-}
-
-func RunDiscovery(cmd *cobra.Command, ctx context.Context) error {
-	service := discovery.NewLocalService()
-	startedAt := time.Now()
-
-	result, err := service.Discover(ctx)
-	if err != nil {
-		return fmt.Errorf("discovery failed: %w", err)
-	}
-
-	history.SetCommandResult(ctx, result)
-
-	if err := output.WriteHuman(os.Stdout, result); err != nil {
-		return fmt.Errorf("write discovery result: %w", err)
-	}
-
-	logger.Info(
-		"Scan completed",
-		"duration", time.Since(startedAt).String(),
 	)
-
-	return nil
 }

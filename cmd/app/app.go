@@ -17,7 +17,7 @@ func RunApplication() error {
 	defer stop()
 	logger.Info("Initializing application")
 
-	_, err := executeApplication(ctx)
+	err := executeApplication(ctx)
 	return err
 
 }
