@@ -7,11 +7,7 @@ import (
 )
 
 type lookupClient interface {
-	LookupNetIP(
-		ctx context.Context,
-		network string,
-		host string,
-	) ([]netip.Addr, error)
+	LookupNetIP(ctx context.Context, network string, host string) ([]netip.Addr, error)
 }
 
 type systemResolver struct {
@@ -24,11 +20,7 @@ func newSystemResolver() *systemResolver {
 	}
 }
 
-func (r *systemResolver) LookupNetIP(
-	ctx context.Context,
-	network string,
-	host string,
-) ([]netip.Addr, error) {
+func (r *systemResolver) LookupNetIP(ctx context.Context, network string, host string) ([]netip.Addr, error) {
 	return r.resolver.LookupNetIP(ctx, network, host)
 }
 

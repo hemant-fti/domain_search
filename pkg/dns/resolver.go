@@ -19,11 +19,7 @@ func NewResolver() *Resolver {
 	}
 }
 
-func (r *Resolver) Verify(
-	ctx context.Context,
-	domain string,
-	serverIP string,
-) models.DNSResult {
+func (r *Resolver) Verify(ctx context.Context, domain string, serverIP string) models.DNSResult {
 	ips, err := r.LookupIP(ctx, domain)
 
 	if err != nil {
@@ -92,10 +88,7 @@ func (r *Resolver) Verify(
 	}
 }
 
-func (r *Resolver) LookupIP(
-	ctx context.Context,
-	host string,
-) ([]string, error) {
+func (r *Resolver) LookupIP(ctx context.Context, host string) ([]string, error) {
 	startedAt := time.Now()
 
 	logger.Debug("DNS IP lookup started", "host", host)
