@@ -3,11 +3,11 @@ package iis
 import (
 	"context"
 	"domain-search/models"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
-	"strings"
 )
 
 func discoverIIS(ctx context.Context) ([]models.Domain, error) {
@@ -15,42 +15,43 @@ func discoverIIS(ctx context.Context) ([]models.Domain, error) {
 		return nil, err
 	}
 
-	configPath := getIISConfigPath()
+	configPath, err := getIISConfigPath()
+	if err != nil {
+		return nil, err
+	}
 
 	data, err := os.ReadFile(configPath)
 	if err != nil {
-		return nil, fmt.Errorf(
-			"failed to read IIS configuration %s: %w",
-			configPath,
-			err,
-		)
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, fmt.Errorf("IIS configuration not found at %s: %w", configPath, err)
+		}
+
+		if errors.Is(err, os.ErrPermission) {
+			return nil, fmt.Errorf("permission denied reading IIS configuration: %s: %w", configPath, err)
+		}
+
+		return nil, fmt.Errorf("failed to read IIS configuration %s: %w", configPath, err)
 	}
 
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 
-	statuses, err := getIISSiteStatuses()
-	if err != nil {
+	statuses, statusErr := getIISSiteStatuses()
+	if statusErr != nil {
+		// Site status is optional; configuration discovery can continue.
 		statuses = nil
 	}
 
-	domains, err := ParseWithStatuses(
-		string(data),
-		configPath,
-		statuses,
-	)
+	domains, err := ParseWithStatuses(string(data), configPath, statuses)
 	if err != nil {
-		return nil, fmt.Errorf(
-			"failed to parse IIS configuration: %w",
-			err,
-		)
+		return nil, fmt.Errorf("failed to parse IIS configuration: %w", err)
 	}
 
 	return domains, nil
 }
 
-func getIISConfigPath() string {
+func getIISConfigPath() (string, error) {
 	windowsDir := os.Getenv("windir")
 	if windowsDir == "" {
 		windowsDir = `C:\Windows`
@@ -58,22 +59,22 @@ func getIISConfigPath() string {
 
 	systemDir := "System32"
 
-	// A 32-bit executable running on 64-bit Windows needs
-	// Sysnative to bypass filesystem redirection.
+	// Sysnative bypasses filesystem redirection for 32-bit processes.
 	if runtime.GOARCH == "386" {
 		systemDir = "Sysnative"
 	}
 
-	return filepath.Join(
+	configPath := filepath.Join(
 		windowsDir,
 		systemDir,
 		"inetsrv",
 		"config",
 		"applicationHost.config",
 	)
-}
 
-// Expand Windows environment variables such as %SystemDrive%.
-func expandWindowsPath(value string) string {
-	return strings.ReplaceAll(value, "%SystemDrive%", os.Getenv("SystemDrive"))
+	if _, err := os.Stat(configPath); err != nil {
+		return "", fmt.Errorf("IIS configuration unavailable at %s: %w", configPath, err)
+	}
+
+	return configPath, nil
 }

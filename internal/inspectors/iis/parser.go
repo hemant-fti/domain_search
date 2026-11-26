@@ -5,13 +5,10 @@ import (
 	"encoding/xml"
 	"fmt"
 	"net"
+	"os"
 	"strconv"
 	"strings"
 )
-
-func Parse(config string, configPath string) ([]models.Domain, error) {
-	return ParseWithStatuses(config, configPath, nil)
-}
 
 func ParseWithStatuses(config string, configPath string, statuses map[string]string) ([]models.Domain, error) {
 	var configuration models.IISConfiguration
@@ -276,4 +273,9 @@ func resolveBinding(protocol, ip string, port int, hostname string) models.Bindi
 	}
 
 	return binding
+}
+
+// Expand Windows environment variables such as %SystemDrive%.
+func expandWindowsPath(value string) string {
+	return strings.ReplaceAll(value, "%SystemDrive%", os.Getenv("SystemDrive"))
 }
