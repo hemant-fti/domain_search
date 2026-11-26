@@ -178,8 +178,10 @@ func NewDomainsGetdatabyServerNameCommand() *cobra.Command {
 				matched := strings.EqualFold(
 					strings.TrimSpace(domain.Name),
 					name,
+				) || strings.EqualFold(
+					strings.TrimSpace(domain.WebsiteName),
+					name,
 				)
-
 				if !matched {
 					for _, alias := range domain.Aliases {
 						if strings.EqualFold(
@@ -203,29 +205,17 @@ func NewDomainsGetdatabyServerNameCommand() *cobra.Command {
 					"duration", time.Since(startedAt).String(),
 				)
 
-				human := fmt.Sprintf(
-					"Domain: %s\n"+
-						"Server: %s\n"+
-						"Configuration: %s\n"+
-						"Proxy Target: %s\n"+
-						"SSL Certificate: %s\n"+
-						"Aliases: %s\n"+
-						"Ports: %v",
-					domain.Name,
-					domain.Source,
-					domain.ConfigPath,
-					domain.ProxyTarget,
-					domain.SSLCertificate,
-					strings.Join(domain.Aliases, ", "),
-					domain.Ports,
-				)
+				var human strings.Builder
 
-				if len(failures) > 0 {
-					human += "\n\nWarnings:\n" +
-						strings.Join(failures, "\n")
+				if err := output.WriteDomain(
+					&human,
+					domain,
+					failures,
+				); err != nil {
+					return models.CommandResult{}, err
 				}
 
-				return textResult(domain, human), nil
+				return textResult(domain, human.String()), nil
 			}
 
 			if len(failures) > 0 {

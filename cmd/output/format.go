@@ -135,24 +135,6 @@ func cpuSummary(model string, cores, threads int) string {
 	return fmt.Sprintf("%s (%d cores / %d threads)", model, cores, threads)
 }
 
-func uniqueStrings(values []string) []string {
-	seen := make(map[string]struct{}, len(values))
-	result := make([]string, 0, len(values))
-	for _, v := range values {
-		v = strings.TrimSpace(v)
-		if v == "" {
-			continue
-		}
-		key := strings.ToLower(v)
-		if _, dup := seen[key]; dup {
-			continue
-		}
-		seen[key] = struct{}{}
-		result = append(result, v)
-	}
-	return result
-}
-
 func FormatDomain(d models.Domain) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "Domain: %s\n", DisplayValue(d.Name))

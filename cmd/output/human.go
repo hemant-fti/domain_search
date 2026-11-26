@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"strings"
 
 	"domain-search/internal/discovery"
@@ -79,6 +78,24 @@ func WriteDomains(out io.Writer, domains []models.Domain) error {
 	})
 }
 
+// WriteDomain renders a single website using the standard discovery report.
+func WriteDomain(
+	out io.Writer,
+	domain models.Domain,
+	warnings []string,
+) error {
+	result := models.DomainResult{
+		Domain: domain,
+	}
+
+	return render(out, func(r *renderer) {
+		r.commandHeader("Server Discovery Report")
+		r.summary(1, dnsCounts([]models.DomainResult{result}))
+		r.warnings(warnings)
+		r.websites([]models.DomainResult{result})
+	})
+}
+
 func WriteCPU(out io.Writer, info models.CPUInfo) error {
 	return render(out, func(r *renderer) {
 		r.commandHeader("System Information")
@@ -149,7 +166,7 @@ func (r *renderer) header(res models.Result) {
 
 	meta := "Status: " + scanStatusLabel(res.Status)
 	if !res.ScannedAt.IsZero() {
-		meta += "  ·  " + res.ScannedAt.Format("02 Jan 2006, 03:04 PM MST")
+		meta += "  ·  " + res.ScannedAt.Local().Format("02 Jan 2006, 03:04 PM MST")
 	}
 	fmt.Fprintf(r.w, "  %s\n\n", dim(meta))
 }
@@ -291,54 +308,47 @@ func (r *renderer) websiteDetails(d models.DomainResult) {
 		kv("Hostname", DisplayValue(d.Hostname))
 
 		if len(d.Bindings) > 0 {
-			var bindingGroups []string
+			r.kv(detailIndent, detailKeyWidth, "Bindings", "")
 
-			for _, binding := range d.Bindings {
-				ips := binding.ResolvedIPs
-
-				if len(ips) == 0 {
-					ips = []string{binding.IP}
-				}
-
-				var addresses []string
-
-				for _, ip := range ips {
-					if net.ParseIP(ip) == nil {
-						continue
-					}
-
-					if strings.Contains(ip, ":") {
-						ip = "[" + ip + "]"
-					}
-
-					addresses = append(addresses, ip)
-				}
-
-				if len(addresses) == 0 {
-					addresses = []string{binding.IP}
-				}
-
-				description := fmt.Sprintf(
-					"%s :%d",
-					strings.ToUpper(binding.Protocol),
-					binding.Port,
-				)
-
-				if binding.Hostname != "" {
-					description = fmt.Sprintf(
-						"%s %s :%d",
-						strings.ToUpper(binding.Protocol),
-						binding.Hostname,
-						binding.Port,
-					)
-				}
-
-				description += " (" + strings.Join(uniqueStrings(addresses), ", ") + ")"
-
-				bindingGroups = append(bindingGroups, description)
+			header := []string{
+				"PROTOCOL",
+				"HOSTNAME",
+				"LISTEN ADDRESS",
+				"PORT",
+				"SSL",
+				"RESOLVED INTERFACES",
 			}
 
-			kv("Bindings", DisplayList(uniqueStrings(bindingGroups)))
+			rows := make([][]cell, 0, len(d.Bindings))
+
+			for _, binding := range d.Bindings {
+				protocol := strings.ToUpper(strings.TrimSpace(binding.Protocol))
+
+				hostname := strings.TrimSpace(binding.Hostname)
+				if hostname == "" {
+					hostname = "Any hostname"
+				}
+
+				listenAddress := formatListenAddress(binding.IP)
+
+				ssl := "No"
+				if strings.EqualFold(protocol, "HTTPS") {
+					ssl = "Yes"
+				}
+
+				resolvedIPs := DisplayList(binding.ResolvedIPs)
+
+				rows = append(rows, []cell{
+					plain(DisplayValue(protocol)),
+					plain(hostname),
+					plain(listenAddress),
+					plain(fmt.Sprintf("%d", binding.Port)),
+					plain(ssl),
+					plain(resolvedIPs),
+				})
+			}
+
+			writeTable(r.w, header, rows)
 		}
 
 		kv("Physical path", DisplayValue(d.Path))
@@ -447,4 +457,19 @@ func (r *renderer) processMemory() {
 	r.kv(2, keyWidth, "Runtime memory", fmt.Sprintf("%.2f MB", m.SysMB))
 	r.kv(2, keyWidth, "Heap reserved", fmt.Sprintf("%.2f MB", m.HeapSysMB))
 	fmt.Fprintln(r.w)
+}
+
+func formatListenAddress(ip string) string {
+	ip = strings.TrimSpace(ip)
+
+	switch ip {
+	case "", "*":
+		return "All interfaces"
+	case "0.0.0.0":
+		return "All IPv4 interfaces"
+	case "::", "[::]":
+		return "All IPv6 interfaces"
+	default:
+		return ip
+	}
 }

@@ -29,7 +29,7 @@ make build-app
 
 That target writes `dist/hostscope-linux-amd64`. Copy the binary to the Linux server you want to scan. Go is not needed on the target server.
 
-## Run a scan
+## Run a scan for Linux
 
 ```bash
 # Human-readable report
@@ -39,6 +39,7 @@ That target writes `dist/hostscope-linux-amd64`. Copy the binary to the Linux se
 ./hostscope version
 
 # System information; focused commands collect only their requested category
+./hostscope system 
 ./hostscope system cpu
 ./hostscope system memory
 ./hostscope system uptime    
@@ -50,6 +51,29 @@ That target writes `dist/hostscope-linux-amd64`. Copy the binary to the Linux se
 # DNS queries use the configured system resolver; these do not enumerate
 # authoritative DNS records.
 ./hostscope domains get-data-by-name example.com
+```
+# FOR WINDOWS
+
+```bash
+# Human-readable report
+./hostscope.exe scan
+
+# Print the CLI version
+./hostscope.exe version
+
+# System information; focused commands collect only their requested category
+./hostscope.exe system 
+./hostscope.exe system cpu
+./hostscope.exe system memory
+./hostscope.exe system uptime    
+./hostscope.exe system disk
+
+# Installed/running web servers and parsed virtual hosts
+./hostscope.exe domains list
+
+# DNS queries use the configured system resolver; these do not enumerate
+# authoritative DNS records.
+./hostscope.exe domains get-data-by-name example.com
 ```
 
 The default scan timeout is two minutes. `--pretty` also selects JSON output; `--compact` selects compact JSON. JSON scan results are written to stdout unless `--output` is specified; scan records are also appended to `scan-results.jsonl` in the current working directory as JSON Lines, preserving earlier runs. Warning and error events are recorded separately in `scan-errors.jsonl`. On an error, human-readable diagnostics go to stderr; JSON-mode errors are written as a JSON object to stdout. The CLI exits with a non-zero status.

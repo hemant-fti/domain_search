@@ -3,11 +3,15 @@
 package system
 
 import (
+	"context"
 	"fmt"
+	"os/exec"
 	"runtime"
+	"strings"
 
 	"domain-search/models"
 
+	"github.com/shirou/gopsutil/v4/disk"
 	"golang.org/x/sys/windows"
 )
 
@@ -61,4 +65,36 @@ func KernelVersion() (string, error) {
 		version.MinorVersion,
 		version.BuildNumber,
 	), nil
+}
+
+func detectTimezone(ctx context.Context) (string, error) {
+	output, err := exec.CommandContext(ctx, "tzutil", "/g").Output()
+	if err != nil {
+		return "", fmt.Errorf("read Windows timezone: %w", err)
+	}
+
+	tz := strings.TrimSpace(string(output))
+	if tz == "" {
+		return "", fmt.Errorf("Windows returned an empty timezone")
+	}
+
+	return tz, nil
+}
+
+func collectDiskUsage(ctx context.Context, path string) (models.DiskInfo, error) {
+	usage, err := disk.UsageWithContext(ctx, path)
+	if err != nil {
+		return models.DiskInfo{}, fmt.Errorf(
+			"collect disk usage for %s: %w", path, err,
+		)
+	}
+
+	const bytesPerGiB = 1024 * 1024 * 1024
+
+	return models.DiskInfo{
+		TotalGB:     float64(usage.Total) / bytesPerGiB,
+		UsedGB:      float64(usage.Used) / bytesPerGiB,
+		FreeGB:      float64(usage.Free) / bytesPerGiB,
+		AvailableGB: float64(usage.Free) / bytesPerGiB,
+	}, nil
 }

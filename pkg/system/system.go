@@ -11,7 +11,6 @@ import (
 	"runtime"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/shirou/gopsutil/v4/cpu"
 	"github.com/shirou/gopsutil/v4/host"
@@ -48,6 +47,8 @@ func GetSysInfo(ctx context.Context) (models.SystemInfo, []string, error) {
 	osInfo, osErr := DetectOS()
 
 	if osErr == nil {
+		info.OS = osInfo
+
 		if osInfo.Name != "" {
 			info.ServerOS = osInfo.Name
 		}
@@ -72,9 +73,9 @@ func GetSysInfo(ctx context.Context) (models.SystemInfo, []string, error) {
 	}
 
 	// Timezone.
-	info.Timezone = time.Now().Location().String()
-	if info.Timezone == "" {
-		info.Timezone = "UTC"
+	timezone, timezoneErr := detectTimezone(ctx)
+	if timezoneErr == nil {
+		info.Timezone = timezone
 	}
 
 	var (
@@ -127,6 +128,14 @@ func GetSysInfo(ctx context.Context) (models.SystemInfo, []string, error) {
 	info.IPv4 = networkInfo.IPv4
 	info.IPv6 = networkInfo.IPv6
 	info.MAC = networkInfo.MAC
+
+	if info.IPv4 == nil {
+		info.IPv4 = []string{}
+	}
+
+	if info.IPv6 == nil {
+		info.IPv6 = []string{}
+	}
 
 	// Track unavailable information.
 	var unavailable []string
@@ -314,6 +323,7 @@ func systemDiskPath() string {
 
 // CollectNetworkInfo collects active network interface information.
 func CollectNetworkInfo(ctx context.Context) (models.NetworkInfo, error) {
+
 	if err := ctx.Err(); err != nil {
 		return models.NetworkInfo{}, err
 	}
@@ -325,7 +335,10 @@ func CollectNetworkInfo(ctx context.Context) (models.NetworkInfo, error) {
 		)
 	}
 
-	var result models.NetworkInfo
+	var result = models.NetworkInfo{
+		IPv4: []string{},
+		IPv6: []string{},
+	}
 
 	for _, iface := range interfaces {
 		if err := ctx.Err(); err != nil {
