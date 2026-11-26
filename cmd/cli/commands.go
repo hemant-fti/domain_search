@@ -1,7 +1,9 @@
+// Package cli wires hostscope's cobra commands.
 package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"time"
@@ -12,113 +14,103 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// DefaultTimeout bounds every command unless --timeout overrides it.
 const DefaultTimeout = 2 * time.Minute
 
-func newResultCommand(use, short string, run func(context.Context, *cobra.Command) (models.CommandResult, error)) *cobra.Command {
-	var options models.CommandOutputOptions
-	options.Timeout = DefaultTimeout
-	options.Pretty = true
+// runFunc is the business logic of a command. It receives a context that is
+// already bounded by --timeout.
+type runFunc func(ctx context.Context, cmd *cobra.Command, args []string) (models.CommandResult, error)
+
+// newResultCommand builds a command with the shared output contract:
+// --json, --pretty, --compact, --timeout, --output.
+func newResultCommand(use, short string, run runFunc, opts ...func(*cobra.Command)) *cobra.Command {
+	o := models.CommandOutputOptions{Timeout: DefaultTimeout, Pretty: true}
 
 	cmd := &cobra.Command{
 		Use:   use,
 		Short: short,
 		Args:  cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			if options.Timeout <= 0 {
-				return fmt.Errorf("Timeout must be greater than zero")
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if o.Timeout <= 0 {
+				return errors.New("timeout must be greater than zero")
 			}
-			if options.Compact {
-				options.Pretty = false
-			}
+			// Args/flags are valid from here on; runtime errors shouldn't dump usage.
+			cmd.SilenceUsage = true
 
-			ctx, cancel := context.WithTimeout(cmd.Context(), options.Timeout)
+			ctx, cancel := context.WithTimeout(commandContext(cmd), o.Timeout)
 			defer cancel()
 
-			result, err := run(ctx, cmd)
+			res, err := run(ctx, cmd, args)
 			if err != nil {
 				return err
 			}
 
-			useJSON := options.Jsonl || options.Compact || cmd.Flags().Changed("Pretty")
-			if useJSON {
-				data, err := logger.MarshalJSON(result.Value, options.Pretty)
-				if err != nil {
-					return fmt.Errorf("encode command result: %w", err)
-				}
-				if err := writeCommandOutput(cmd, options.Output, data); err != nil {
-					return fmt.Errorf("write command result: %w", err)
-				}
-				return nil
+			asJSON := o.Jsonl || o.Compact || cmd.Flags().Changed("pretty")
+			data, err := render(res, asJSON, o.Pretty && !o.Compact)
+			if err != nil {
+				return err
 			}
-
-			if result.Human == "" {
-				return nil
-			}
-			if result.Human[len(result.Human)-1] != '\n' {
-				result.Human += "\n"
-			}
-			if err := writeCommandOutput(cmd, options.Output, []byte(result.Human)); err != nil {
-				return fmt.Errorf("write command result: %w", err)
-			}
-			return nil
+			return writeOutput(cmd, o.Output, data)
 		},
 	}
 
-	cmd.Flags().BoolVar(&options.Jsonl, "json", false, "emit JSON Output")
-	cmd.Flags().BoolVar(&options.Pretty, "Pretty", true, "indent JSON Output (implies --json)")
-	cmd.Flags().BoolVar(&options.Compact, "Compact", false, "emit Compact JSON Output")
-	cmd.Flags().DurationVar(&options.Timeout, "Timeout", DefaultTimeout, "maximum command duration")
-	cmd.Flags().StringVarP(&options.Output, "Output", "o", "", "write the result to a file")
+	f := cmd.Flags()
+	f.BoolVar(&o.Jsonl, "json", false, "emit JSON output")
+	f.BoolVar(&o.Pretty, "pretty", true, "indent JSON output (implies --json)")
+	f.BoolVar(&o.Compact, "compact", false, "emit compact JSON output (implies --json)")
+	f.DurationVar(&o.Timeout, "timeout", DefaultTimeout, "maximum command duration")
+	f.StringVarP(&o.Output, "output", "o", "", "write the result to a file instead of stdout")
+
+	for _, opt := range opts {
+		opt(cmd)
+	}
 	return cmd
 }
 
-func writeCommandOutput(cmd *cobra.Command, path string, data []byte) error {
-	if path != "" {
-		if err := os.WriteFile(path, data, 0600); err != nil {
-			return fmt.Errorf("write output file %s: %w", path, err)
+func withArgs(v cobra.PositionalArgs) func(*cobra.Command) {
+	return func(c *cobra.Command) { c.Args = v }
+}
+
+func commandContext(cmd *cobra.Command) context.Context {
+	if ctx := cmd.Context(); ctx != nil {
+		return ctx
+	}
+	return context.Background()
+}
+
+func render(res models.CommandResult, asJSON, pretty bool) ([]byte, error) {
+	var data []byte
+	if asJSON {
+		var err error
+		if data, err = logger.MarshalJSON(res.Value, pretty); err != nil {
+			return nil, fmt.Errorf("encode command result: %w", err)
 		}
+	} else {
+		data = []byte(res.Human)
+	}
+	if len(data) > 0 && data[len(data)-1] != '\n' {
+		data = append(data, '\n')
+	}
+	return data, nil
+}
 
-		logger.Info(
-			"Command output written",
-			"output_file", path,
-			"size_bytes", len(data),
-		)
-
+func writeOutput(cmd *cobra.Command, path string, data []byte) error {
+	if len(data) == 0 {
 		return nil
 	}
-
-	if _, err := cmd.OutOrStdout().Write(data); err != nil {
-		return fmt.Errorf("write command output: %w", err)
+	if path == "" {
+		if _, err := cmd.OutOrStdout().Write(data); err != nil {
+			return fmt.Errorf("write command output: %w", err)
+		}
+		return nil
 	}
-
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		return fmt.Errorf("write output file %s: %w", path, err)
+	}
+	logger.Info("Command output written", "output_file", path, "size_bytes", len(data))
 	return nil
 }
 
-func textResult(Value any, Human string) models.CommandResult {
-	return models.CommandResult{Value: Value, Human: Human}
-}
-
-func NewSystemCommand() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "system",
-		Short: "Inspect local system information",
-		Args:  cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return runSystemInfo(cmd)
-		},
-	}
-
-	cmd.AddCommand(NewSystemCPUCommand())
-	cmd.AddCommand(NewSystemMemoryCommand())
-	cmd.AddCommand(NewSystemUptimeCommand())
-	cmd.AddCommand(NewDiskUsageCommand())
-
-	return cmd
-}
-
-func NewDomainsCommand() *cobra.Command {
-	cmd := &cobra.Command{Use: "domains", Short: "Discover configured domains and perform DNS lookups"}
-	cmd.AddCommand(NewDomainsListCommand())
-	cmd.AddCommand(NewDomainsGetdatabyServerNameCommand())
-	return cmd
+func result(value any, human string) models.CommandResult {
+	return models.CommandResult{Value: value, Human: human}
 }

@@ -73,22 +73,15 @@ func resolveSSLCertificate(site models.IISSite) string {
 	return ""
 }
 
-type HTTPSSLCertificateBinding struct {
-	IPPort       string
-	HostnamePort string
-	Hash         string
-	StoreName    string
-}
-
-func parseHTTPSSLCertificates(output string) []HTTPSSLCertificateBinding {
-	var results []HTTPSSLCertificateBinding
-	var current HTTPSSLCertificateBinding
+func parseHTTPSSLCertificates(output string) []models.HTTPSSLCertificateBinding {
+	var results []models.HTTPSSLCertificateBinding
+	var current models.HTTPSSLCertificateBinding
 
 	flush := func() {
 		if current.Hash != "" {
 			results = append(results, current)
 		}
-		current = HTTPSSLCertificateBinding{}
+		current = models.HTTPSSLCertificateBinding{}
 	}
 
 	for _, line := range strings.Split(output, "\n") {
@@ -124,12 +117,7 @@ func parseHTTPSSLCertificates(output string) []HTTPSSLCertificateBinding {
 	return results
 }
 
-func parseIISBindingParts(value string) (
-	ip string,
-	port string,
-	host string,
-	ok bool,
-) {
+func parseIISBindingParts(value string) (ip string, port string, host string, ok bool) {
 	lastColon := strings.LastIndex(value, ":")
 	if lastColon < 0 {
 		return "", "", "", false

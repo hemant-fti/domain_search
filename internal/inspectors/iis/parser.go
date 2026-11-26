@@ -13,11 +13,7 @@ func Parse(config string, configPath string) ([]models.Domain, error) {
 	return ParseWithStatuses(config, configPath, nil)
 }
 
-func ParseWithStatuses(
-	config string,
-	configPath string,
-	statuses map[string]string,
-) ([]models.Domain, error) {
+func ParseWithStatuses(config string, configPath string, statuses map[string]string) ([]models.Domain, error) {
 	var configuration models.IISConfiguration
 
 	if err := xml.Unmarshal([]byte(config), &configuration); err != nil {
@@ -229,9 +225,7 @@ func findProxyTarget(rewrite models.IISRewrite) string {
 // 127.0.0.1:443:example.com
 // *:443:www.example.com
 
-func parseBindingInformation(
-	value string,
-) (ip string, port int, hostname string, valid bool) {
+func parseBindingInformation(value string) (ip string, port int, hostname string, valid bool) {
 	parts := strings.SplitN(value, ":", 3)
 
 	if len(parts) != 3 {

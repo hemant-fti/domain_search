@@ -25,3 +25,10 @@ type Binding struct {
 	Hostname    string   `json:"hostname,omitempty"`
 	ResolvedIPs []string `json:"resolved_ips,omitempty"`
 }
+
+type HTTPSSLCertificateBinding struct {
+	IPPort       string
+	HostnamePort string
+	Hash         string
+	StoreName    string
+}
