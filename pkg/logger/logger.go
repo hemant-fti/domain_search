@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"runtime"
 	"sync"
 	"time"
@@ -230,4 +231,16 @@ func (l *logger) logAt(
 	record.Add(args...)
 
 	_ = handler.Handle(ctx, record)
+}
+
+func OpenLogFile(path string) (*os.File, error) {
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return nil, err
+	}
+
+	return os.OpenFile(
+		path,
+		os.O_CREATE|os.O_WRONLY|os.O_APPEND,
+		0600,
+	)
 }
