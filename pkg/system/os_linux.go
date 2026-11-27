@@ -4,7 +4,6 @@ package system
 
 import (
 	"context"
-	"domain-search/models"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -12,6 +11,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"domain-search/pkg/models"
 
 	"golang.org/x/sys/unix"
 )

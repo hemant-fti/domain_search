@@ -9,7 +9,7 @@ import (
 	"runtime"
 	"strings"
 
-	"domain-search/models"
+	"domain-search/pkg/models"
 
 	"github.com/shirou/gopsutil/v4/disk"
 	"golang.org/x/sys/windows"

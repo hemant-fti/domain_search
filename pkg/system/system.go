@@ -1,16 +1,20 @@
+// Package system collects host information: OS, CPU, memory, disk, network,
+// uptime and process/service state.
 package system
 
 import (
 	"context"
-	"domain-search/models"
 	"fmt"
 	"net"
 	"net/netip"
 	"os"
 	"os/user"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
+
+	"domain-search/pkg/models"
 
 	"github.com/shirou/gopsutil/v4/cpu"
 	"github.com/shirou/gopsutil/v4/host"
@@ -18,8 +22,6 @@ import (
 )
 
 // GetSysInfo collects system information.
-// GetSysInfo collects system information.
-
 func GetSysInfo(ctx context.Context) (models.SystemInfo, []string, error) {
 	info := models.SystemInfo{
 		IPv4: []string{},
@@ -410,4 +412,47 @@ func GetProcessMemory() models.ProcessMemory {
 		HeapAllocMB:  float64(stats.HeapAlloc) / mb,
 		HeapSysMB:    float64(stats.HeapSys) / mb,
 	}
+}
+
+// LocalIPs returns every non-loopback address on the interfaces that are up,
+// sorted and without duplicates.
+func LocalIPs() ([]string, error) {
+	interfaces, err := net.Interfaces()
+	if err != nil {
+		return nil, fmt.Errorf("list network interfaces: %w", err)
+	}
+
+	seen := make(map[netip.Addr]struct{})
+	var addrs []netip.Addr
+	for _, iface := range interfaces {
+		if iface.Flags&net.FlagUp == 0 {
+			continue
+		}
+		ifaceAddrs, err := iface.Addrs()
+		if err != nil {
+			continue
+		}
+		for _, a := range ifaceAddrs {
+			prefix, err := netip.ParsePrefix(a.String())
+			if err != nil {
+				continue
+			}
+			ip := prefix.Addr().Unmap()
+			if !ip.IsValid() || ip.IsLoopback() {
+				continue
+			}
+			if _, dup := seen[ip]; dup {
+				continue
+			}
+			seen[ip] = struct{}{}
+			addrs = append(addrs, ip)
+		}
+	}
+	slices.SortFunc(addrs, func(a, b netip.Addr) int { return a.Compare(b) })
+
+	out := make([]string, len(addrs))
+	for i, ip := range addrs {
+		out[i] = ip.String()
+	}
+	return out, nil
 }

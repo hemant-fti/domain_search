@@ -1,166 +1,86 @@
+// Package dns resolves domain names with the system resolver and checks
+// whether they point at this server.
 package dns
 
 import (
 	"context"
-	"domain-search/models"
-	"domain-search/pkg/logger"
+	"fmt"
+	"net"
 	"net/netip"
 	"slices"
-	"time"
+
+	"domain-search/pkg/models"
 )
 
+// Resolver looks up addresses and verifies domains against a server IP.
 type Resolver struct {
-	client lookupClient
+	client LookupClient
 }
 
+// NewResolver returns a Resolver that uses the system resolver.
 func NewResolver() *Resolver {
-	return &Resolver{
-		client: newSystemResolver(),
-	}
+	return NewResolverWithClient(net.DefaultResolver)
 }
 
-func (r *Resolver) Verify(ctx context.Context, domain string, serverIP string) models.DNSResult {
+// NewResolverWithClient returns a Resolver that uses client, e.g. a custom
+// *net.Resolver or a test fake.
+func NewResolverWithClient(client LookupClient) *Resolver {
+	return &Resolver{client: client}
+}
+
+// Verify resolves domain and reports whether any address equals serverIP.
+// The error explains an unresolved or invalid_server_ip status; the
+// DNSResult is always usable.
+func (r *Resolver) Verify(ctx context.Context, domain, serverIP string) (models.DNSResult, error) {
 	ips, err := r.LookupIP(ctx, domain)
-
 	if err != nil {
-		logger.Warn(
-			"DNS lookup failed",
-			"domain", domain,
-			"error", err,
-		)
-
-		return models.DNSResult{
-			ResolvedIPs:   []string{},
-			MatchesServer: false,
-			Status:        "unresolved",
-		}
+		return unresolved(), err
 	}
-
 	if len(ips) == 0 {
-		logger.Warn(
-			"No IP addresses resolved",
-			"domain", domain,
-		)
-
-		return models.DNSResult{
-			ResolvedIPs:   []string{},
-			MatchesServer: false,
-			Status:        "unresolved",
-		}
+		return unresolved(), fmt.Errorf("lookup %s: no addresses", domain)
 	}
 
-	normalizedIP, err := normalizeIPString(serverIP)
+	server, err := netip.ParseAddr(serverIP)
 	if err != nil {
-		logger.Warn(
-			"Invalid server IP address",
-			"domain", domain,
-			"server_ip", serverIP,
-			"error", err,
-		)
-
-		return models.DNSResult{
-			ResolvedIPs:   ips,
-			MatchesServer: false,
-			Status:        "invalid_server_ip",
-		}
+		return models.DNSResult{ResolvedIPs: ips, Status: models.DNSStatusInvalidServerIP},
+			fmt.Errorf("invalid server IP %q: %w", serverIP, err)
 	}
+	server = server.Unmap()
 
-	matches := matchesServerIP(ips, normalizedIP)
-
-	status := "resolved_other_ip"
+	matches := slices.ContainsFunc(ips, func(ip string) bool {
+		addr, err := netip.ParseAddr(ip)
+		return err == nil && addr.Unmap() == server
+	})
+	status := models.DNSStatusResolvedOtherIP
 	if matches {
-		status = "matches_server"
+		status = models.DNSStatusMatchesServer
 	}
-
-	logger.Info(
-		"DNS verification completed",
-		"domain", domain,
-		"server_ip", normalizedIP,
-		"resolved_ips", ips,
-		"matches_server", matches,
-		"status", status,
-	)
-
-	return models.DNSResult{
-		ResolvedIPs:   ips,
-		MatchesServer: matches,
-		Status:        status,
-	}
+	return models.DNSResult{ResolvedIPs: ips, MatchesServer: matches, Status: status}, nil
 }
 
+// LookupIP returns the distinct IPv4 and IPv6 addresses of host, sorted.
 func (r *Resolver) LookupIP(ctx context.Context, host string) ([]string, error) {
-	startedAt := time.Now()
-
-	logger.Debug("DNS IP lookup started", "host", host)
-
-	ips, err := r.client.LookupNetIP(ctx, "ip", host)
+	addrs, err := r.client.LookupNetIP(ctx, "ip", host)
 	if err != nil {
-		logger.Debug(
-			"DNS IP lookup failed",
-			"host", host,
-			"error", err,
-			"duration", time.Since(startedAt).String(),
-		)
-
 		return nil, err
 	}
 
-	addresses := make([]netip.Addr, 0, len(ips))
-	seen := make(map[netip.Addr]struct{}, len(ips))
-
-	for _, address := range ips {
-		address = normalizeIP(address)
-
-		if !isValidIP(address) {
-			continue
+	unique := make([]netip.Addr, 0, len(addrs))
+	for _, a := range addrs {
+		a = a.Unmap()
+		if a.IsValid() && !slices.Contains(unique, a) {
+			unique = append(unique, a)
 		}
-
-		if _, exists := seen[address]; exists {
-			continue
-		}
-
-		seen[address] = struct{}{}
-		addresses = append(addresses, address)
 	}
+	slices.SortFunc(unique, netip.Addr.Compare)
 
-	slices.SortFunc(addresses, func(a, b netip.Addr) int {
-		return a.Compare(b)
-	})
-
-	result := make([]string, len(addresses))
-
-	for i, address := range addresses {
-		result[i] = address.String()
+	out := make([]string, len(unique))
+	for i, a := range unique {
+		out[i] = a.String()
 	}
-
-	logger.Debug(
-		"DNS IP lookup completed",
-		"host", host,
-		"results", len(result),
-		"duration", time.Since(startedAt).String(),
-	)
-
-	return result, nil
+	return out, nil
 }
 
-func matchesServerIP(ips []string, serverIP string) bool {
-	serverAddr, err := parseIP(serverIP)
-	if err != nil {
-		return false
-	}
-
-	serverAddr = normalizeIP(serverAddr)
-
-	for _, ip := range ips {
-		addr, err := parseIP(ip)
-		if err != nil {
-			continue
-		}
-
-		if normalizeIP(addr) == serverAddr {
-			return true
-		}
-	}
-
-	return false
+func unresolved() models.DNSResult {
+	return models.DNSResult{ResolvedIPs: []string{}, Status: models.DNSStatusUnresolved}
 }

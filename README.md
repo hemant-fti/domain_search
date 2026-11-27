@@ -1,144 +1,148 @@
-# DomainScout
+# DomainScout (`hostscope`)
 
-DomainScout is a Go command-line tool that scans the local Linux server for Nginx and Apache website configuration, checks discovered domain names through DNS, and collects server and system information.
+`hostscope` is a Go command-line tool that runs on a server and reports:
 
-The scan runs on the machine being inspected. This repository currently provides a local CLI; it does not include an HTTP API or an SSH client.
+- which web servers are installed and running (Nginx and Apache on Linux, IIS on Windows)
+- the websites and virtual hosts they serve
+- whether each domain's DNS points at this server
+- the TLS certificates those sites use: issuer, SANs, validity, expiry status and fingerprints
+- system health: OS, CPU, memory, disk and uptime
+
+It is the first phase of an SSL/TLS certificate management tool focused on Windows Server and IIS. See [Roadmap](#roadmap).
+
+## Supported platforms
+
+| Platform | Web servers | Certificate source |
+|---|---|---|
+| Linux (amd64) | Nginx, Apache | Nginx `ssl_certificate` files |
+| Windows Server (amd64) | IIS | HTTP.sys bindings + LocalMachine certificate store |
 
 ## Requirements
 
-- Go 1.26 or later to build from source (see `go.mod`).
-- A Linux host with `/bin/sh` to run a scan.
-- Nginx and/or Apache command-line tools to inspect those services. Missing tools or inaccessible configuration may result in warnings or incomplete results.
-- DNS/network access for DNS verification.
-
-Root access is not required for every field. Some configuration checks retry with `sudo -n`; run with appropriate privileges if you need to inspect protected service configuration.
+- Go 1.26 or later to build (see `go.mod`). The target server does not need Go.
+- **Linux**
+  - The `nginx` and/or `apachectl`/`httpd` tools must be on `PATH`.
+  - Reading protected configuration needs root. Hostscope retries with `sudo -n`.
+- **Windows**
+  - IIS must be installed.
+  - Run as Administrator to read HTTP.sys certificate bindings and the LocalMachine store.
+  - Site state (Started/Stopped) uses the WebAdministration PowerShell module.
+- DNS access is needed for DNS verification.
 
 ## Build
 
-Build for the current host:
+```bash
+make build            # current platform → ./hostscope (or hostscope.exe)
+make build-linux      # → ./hostscope              (linux/amd64, static)
+make build-windows    # → ./hostscope-windows-amd64.exe
+```
+
+Or build directly:
 
 ```bash
 go build -o hostscope ./cmd/hostscope
 ```
 
-Build a Linux AMD64 binary from a host with GNU Make:
+## Commands
 
 ```bash
-make build-app
+hostscope                 # interactive menu (same as `hostscope tui`)
+hostscope scan            # full report: services, websites, DNS, certificates, system
+hostscope domains list    # websites from every detected web server
+hostscope domains get-data-by-name example.com
+hostscope system          # system report
+hostscope system cpu | memory | disk | uptime
+hostscope version         # prints {"version": "..."}
 ```
 
-That target writes `dist/hostscope-linux-amd64`. Copy the binary to the Linux server you want to scan. Go is not needed on the target server.
+Every data command accepts `--timeout` (default `2m`).
 
-## Run a scan for Linux
+Output is human-readable text on stdout. Each command's structured result is also appended as one JSON line to `application.jsonl` in the current directory, along with diagnostic logs and warning events. Secrets in arguments and error details are redacted.
+
+## What a scan reports about certificates
+
+Each certificate result contains the following fields. The JSON key is in brackets.
+
+| Field | Contents |
+|---|---|
+| Installed (`installed`) | `false` when the certificate could not be read; `error` explains why. |
+| Identity | `common_name`, `subject_dn`, `issuer_dn`, `sans` |
+| Key | `key_type`, `key_bits`, `sig_alg`, `key_usage`, `ext_key_usage` |
+| Validity | `not_before`, `not_after`, `expiry_status`, `days_remaining` |
+| Identifiers | `serial_number`, `serial_hex`, `fingerprint_sha256`, `fingerprint_sha1` (the Windows thumbprint), `spki_sha256` |
+| Endpoint | `ip`, `fqdn`, `port`, `paths.fullchain` (the file path for Nginx; `null` for the Windows store) |
+
+`expiry_status` is one of:
+- `valid`
+- `expiring`: within 30 days of `not_after`
+- `expired`
+- `not_yet_valid`
+
+## Architecture
+
+```
+cmd/hostscope        entry point
+internal/app         signal handling, command execution, redacted command logging
+internal/cli         cobra commands and the interactive menu (presentation only)
+internal/cli/render  human-readable output
+internal/scan        orchestration: runs inspectors, DNS checks, builds the report
+pkg/models           shared domain types
+pkg/nginx            Nginx virtual hosts and certificate files
+pkg/apache           Apache virtual hosts
+pkg/iis              IIS websites + bound certificates
+pkg/iis/config       applicationHost.config parsing (cross-platform)
+pkg/iis/httpsys      HTTP.sys certificate binding lookup (Windows)
+pkg/ssl/certificate  X.509 parsing and metadata
+pkg/ssl/inspect      certificates served by a live TLS endpoint
+pkg/ssl/validate     expiry, hostname, chain and key-pair checks
+pkg/ssl/store        Windows certificate store lookup
+pkg/dns              DNS resolution and server-IP verification
+pkg/system           OS, CPU, memory, disk, network, process and service state
+pkg/security         secret redaction
+pkg/logger           structured JSON logging (application layer only)
+pkg/tui              generic keyboard menu
+```
+
+Packages under `pkg/` never import `internal/` and never use the global logger. Each one can be used and tested on its own. `go test ./tests/` enforces these rules.
+
+More detail is in [docs/](docs/):
+
+- [architecture.md](docs/architecture.md): layers and how a scan flows
+- [package-responsibilities.md](docs/package-responsibilities.md)
+- [dependency-rules.md](docs/dependency-rules.md)
+- [ssl-architecture.md](docs/ssl-architecture.md)
+- [acme-architecture.md](docs/acme-architecture.md): planned
+- [iis-architecture.md](docs/iis-architecture.md)
+
+## Development
 
 ```bash
-# Human-readable report
-./hostscope scan
-
-# Print the CLI version
-./hostscope version
-
-# System information; focused commands collect only their requested category
-./hostscope system 
-./hostscope system cpu
-./hostscope system memory
-./hostscope system uptime    
-./hostscope system disk
-
-# Installed/running web servers and parsed virtual hosts
-./hostscope domains list
-
-# DNS queries use the configured system resolver; these do not enumerate
-# authoritative DNS records.
-./hostscope domains get-data-by-name example.com
-```
-# FOR WINDOWS
-
-```bash
-# Human-readable report
-./hostscope.exe scan
-
-# Print the CLI version
-./hostscope.exe version
-
-# System information; focused commands collect only their requested category
-./hostscope.exe system 
-./hostscope.exe system cpu
-./hostscope.exe system memory
-./hostscope.exe system uptime    
-./hostscope.exe system disk
-
-# Installed/running web servers and parsed virtual hosts
-./hostscope.exe domains list
-
-# DNS queries use the configured system resolver; these do not enumerate
-# authoritative DNS records.
-./hostscope.exe domains get-data-by-name example.com
+make test        # unit tests
+make test-race   # with the race detector (needs a C compiler)
+make vet         # go vet for linux and windows
+make check-deps  # package dependency rules
+make cross       # build everything and compile Windows tests
+make check       # all of the above + gofmt
 ```
 
-The default scan timeout is two minutes. `--pretty` also selects JSON output; `--compact` selects compact JSON. JSON scan results are written to stdout unless `--output` is specified; scan records are also appended to `scan-results.jsonl` in the current working directory as JSON Lines, preserving earlier runs. Warning and error events are recorded separately in `scan-errors.jsonl`. On an error, human-readable diagnostics go to stderr; JSON-mode errors are written as a JSON object to stdout. The CLI exits with a non-zero status.
+Windows-only code (`*_windows.go`) is compiled and vetted from Linux by `make cross` and `make vet`. Its tests must run on Windows.
 
-The human-readable report includes the scan status, server overview, detected services, website configurations, DNS results, system information, and warnings.
+## Roadmap
 
-## Command reference
+**Implemented**
+- Web server, website and binding discovery.
+- DNS verification.
+- Certificate inventory: IIS through HTTP.sys and the certificate store; Nginx through certificate files.
+- Expiry status.
+- Chain, hostname and key-pair validation helpers.
+- Fetching the certificate a public endpoint serves.
 
-The CLI command hierarchy is:
+**Planned**
+- ACME issuance and renewal (Let's Encrypt, ZeroSSL; HTTP-01 and DNS-01).
+- Renewal scheduling and history.
+- Certificate installation into the Windows store.
+- IIS HTTPS binding creation and replacement.
+- Local-vs-public certificate mismatch reporting in `scan`.
+- Apache `SSLCertificateFile` inventory.
 
-```text
-hostscope
-├── scan
-├── system info|cpu|memory|disk|network|uptime
-├── web list|nginx|apache|status
-├── domains list|nginx|apache|dns
-├── ports list|tcp|udp
-├── services list|status <service>
-├── ssl list|check
-├── config nginx|apache
-└── version
-```
-
-Commands that return discovery results support `--json`, `--pretty`, `--compact`, `--timeout`, and `--output FILE`. `--pretty` implies JSON; `--compact` emits JSON without indentation. `scan` retains its existing output formats and timeout option.
-
-Examples:
-
-```bash
-
-```
-
-DNS lookup supports only A, AAAA, MX, NS, and TXT records. Ports are local TCP/UDP sockets. `--all` includes non-listening TCP connections; UDP has no TCP-style listening state and is reported as bound. SSL commands inspect certificates referenced by local configuration and do not probe remote TLS services. Service management commands require Linux with systemd. Web-server discovery/configuration commands require Linux and the corresponding Nginx or Apache tools; protected configuration may require appropriate privileges. System metrics and local socket listing use the existing gopsutil collectors and depend on host permissions/platform support.
-
-Not implemented: authoritative DNS zone enumeration, remote port scanning, remote TLS certificate checks, Windows service-manager integration, and discovery of web servers other than Nginx and Apache. Such operations are not implied by similarly named local inspection commands.
-
-## JSON output
-
-The scan JSON response includes:
-
-- `status`, `scanned_at`, and `warnings`.
-- `server`: hostname, operating system, kernel, and primary IP address.
-- `detected_services` and `total_domains`.
-- `servers`: detected web services, their running state, and reported domains, aliases, configuration files, document roots, and listening ports.
-- `system`: network addresses, OS and CPU details, uptime, user, timezone, disk, and memory information.
-- `domains`: discovered website configuration and DNS status, including resolved IP addresses.
-
-Disk and memory fields ending in `_gb` are reported in GiB (bytes divided by 1024^3). DNS matching compares resolved addresses with the server's detected primary IP; a DNS match does not establish that a website is reachable.
-
-## Checks
-
-```bash
-go test ./...
-go vet ./...
-```
-
-## Current limitations
-
-- Scans run locally and require `/bin/sh`; remote SSH scanning and an HTTP API are not implemented.
-- Nginx discovery uses `nginx -T` and basic configuration parsing. It may require elevated privileges and may not recognize every valid configuration pattern.
-- Apache discovery relies on `apachectl -S` or `httpd -S`; it does not fully parse every virtual-host directive.
-- Only Nginx and Apache website configurations are inspected. Caddy and Docker discovery are not currently implemented.
-- DNS results can differ from a simple server-IP comparison when a domain uses NAT, load balancers, CDNs, or multiple public IPs.
-- The tool does not store credentials. Scan history is appended locally as JSON Lines in `scan-results.jsonl`.
-
-## Security
-
-- Run the scanner with only the privileges needed to read the relevant service configuration.
-- DNS verification requires network access.
+The planned designs are in [docs/acme-architecture.md](docs/acme-architecture.md) and [docs/iis-architecture.md](docs/iis-architecture.md).
