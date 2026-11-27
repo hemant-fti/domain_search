@@ -5,9 +5,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
+	"log/slog"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"domain-search/models"
@@ -47,28 +46,28 @@ func newResultCommand(use, short string, run runFunc, opts ...func(*cobra.Comman
 				return err
 			}
 
-			// Print human-readable output only in the terminal.
+			// 1. Print human-readable output to terminal.
 			if _, err := fmt.Fprint(cmd.OutOrStdout(), res.Human); err != nil {
 				return fmt.Errorf("write terminal output: %w", err)
 			}
 
-			// Automatically save structured JSON.
-			data, err := logger.MarshalJSON(res.Value, true)
+			// 2. Append structured result to the common JSONL file.
+			resultLogger, err := logger.NewWithConfig(logger.Config{
+				Level:      slog.LevelInfo,
+				FilePath:   filepath.Join("application.jsonl"),
+				JSONFormat: true,
+				Console:    false,
+			})
 			if err != nil {
-				return fmt.Errorf("encode command result: %w", err)
+				return fmt.Errorf("initialize JSONL output: %w", err)
 			}
+			defer resultLogger.Close()
 
-			outputDir := "output"
-			if err := os.MkdirAll(outputDir, 0755); err != nil {
-				return fmt.Errorf("create output directory: %w", err)
-			}
-
-			filename := strings.ReplaceAll(cmd.CommandPath(), " ", "-") + ".json"
-			outputPath := filepath.Join(outputDir, filename)
-
-			if err := os.WriteFile(outputPath, data, 0600); err != nil {
-				return fmt.Errorf("save JSON output: %w", err)
-			}
+			resultLogger.Info(
+				"Command output",
+				"command", cmd.CommandPath(),
+				"result", res.Value,
+			)
 
 			return nil
 		},
