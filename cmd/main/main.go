@@ -10,7 +10,7 @@ import (
 func main() {
 	err := logger.Init(logger.Config{
 		Level:      slog.LevelDebug,
-		FilePath:   "logs/application.jsonl",
+		FilePath:   "application.jsonl",
 		Console:    true,
 		JSONFormat: true,
 		AddSource:  false,

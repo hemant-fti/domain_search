@@ -10,4 +10,4 @@ bin/
 dom
 /hostscope
 /hostscope.exe
-/logs/
+/application.jsonl
