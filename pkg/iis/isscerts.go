@@ -1,32 +1,40 @@
 //go:build windows
 
 // Package iis returns the TLS certificate that is actually bound to
-// every HTTPS binding configured in IIS.
+// every HTTPS binding configured in IIS, and can also fetch the certificate
+// presented by a public endpoint (to detect CDN/proxy TLS termination).
 //
 // Usage:
 //
 //	certs, err := iis.GetIISCertificates()
+//	cert, err := iis.GetPublicCertificate(ctx, "example.com", 443)
 //
-// How it works:
+// How the IIS path works:
 //
-//  1. Read the HTTPS bindings (IP, port, hostname) from IIS's applicationHost.config.
+//  1. Read the HTTPS bindings (IP, port, hostname, sslFlags) from IIS's
+//     applicationHost.config.
 //  2. Ask HTTP.sys (the Windows kernel HTTP driver) which certificate thumbprint
 //     is bound to each binding. HTTP.sys is the source of truth: the certificate
 //     is NOT stored in applicationHost.config.
 //  3. Find that thumbprint in the LocalMachine certificate store and extract
 //     its details.
 //
-// Requirements: Windows, run as Administrator, 64-bit build (a 32-bit binary
-// on 64-bit Windows gets System32 redirected and cannot see the IIS config),
-// Go 1.18+, and `go get golang.org/x/sys/windows`.
+// Requirements: Windows, run as Administrator, Go 1.18+, and
+// `go get golang.org/x/sys/windows`. A 32-bit binary on 64-bit Windows is
+// handled through Sysnative.
+//
+// Limitation: Centralized Certificate Store (CCS) bindings select the
+// certificate dynamically and are reported as unresolved with an explicit error.
 package iis
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"crypto/ed25519"
 	"crypto/rsa"
 	"crypto/sha1"
 	"crypto/sha256"
+	"crypto/tls"
 	"crypto/x509"
 	"domain-search/models"
 	"encoding/binary"
@@ -34,6 +42,7 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
+	"net"
 	"net/netip"
 	"os"
 	"path/filepath"
@@ -51,40 +60,64 @@ import (
 // -----------------------------------------------------------------------------
 
 // GetIISCertificates returns one result per HTTPS binding in IIS.
-// If any binding's certificate cannot be resolved, the error is returned.
+// Bindings whose certificate cannot be resolved are still returned with
+// Installed=false. The first error encountered (if any) is returned alongside
+// the results, so callers get partial data instead of nothing.
 func GetIISCertificates() ([]models.CertificateResult, error) {
+	bindings, readErr := ReadHTTPSBindingsFromIIS()
+	if len(bindings) == 0 {
+		// Nothing to look up: do not initialize HTTP.sys at all.
+		return []models.CertificateResult{}, readErr
+	}
+
 	if err := startHTTPSys(); err != nil {
 		return nil, err
 	}
 	defer stopHTTPSys()
 
-	bindings, err := ReadHTTPSBindingsFromIIS()
-	if err != nil {
-		return nil, err
-	}
-
+	firstErr := readErr
 	results := make([]models.CertificateResult, 0, len(bindings))
-	var firstErr error
 
 	for _, b := range bindings {
 		cert, err := getCertForBinding(b)
 		if err != nil {
 			if firstErr == nil {
-				firstErr = fmt.Errorf(
-					"binding %s:%d (%q): %w",
-					b.IP,
-					b.Port,
-					b.FQDN,
-					err,
-				)
+				firstErr = fmt.Errorf("site %q, %s:%d (%q): %w", b.SiteName, b.IP, b.Port, b.FQDN, err)
 			}
+			results = append(results, toCertificateResult(b, nil)) // Installed=false
 			continue
 		}
-
 		results = append(results, toCertificateResult(b, cert))
 	}
-
 	return results, firstErr
+}
+
+// GetPublicCertificate returns the certificate presented at host:port.
+// Verification is intentionally off: this is inventory, not validation,
+// so expired, self-signed, and mismatched certs must still be reported.
+//
+// Compare its SHA-256 fingerprint with the IIS (origin) certificate to detect
+// whether a CDN/proxy such as Cloudflare terminates TLS in front of IIS.
+func GetPublicCertificate(ctx context.Context, host string, port int) (*x509.Certificate, error) {
+	d := &tls.Dialer{
+		NetDialer: &net.Dialer{Timeout: 5 * time.Second},
+		Config:    &tls.Config{ServerName: host, InsecureSkipVerify: true}, //nolint:gosec
+	}
+	conn, err := d.DialContext(ctx, "tcp", net.JoinHostPort(host, strconv.Itoa(port)))
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Close()
+
+	tlsConn, ok := conn.(*tls.Conn)
+	if !ok {
+		return nil, errors.New("unexpected connection type")
+	}
+	certs := tlsConn.ConnectionState().PeerCertificates
+	if len(certs) == 0 {
+		return nil, errors.New("no certificate presented")
+	}
+	return certs[0], nil
 }
 
 // -----------------------------------------------------------------------------
@@ -93,43 +126,53 @@ func GetIISCertificates() ([]models.CertificateResult, error) {
 
 // iisConfig is the small part of applicationHost.config we care about:
 //
-//	<system.applicationHost><sites><site><bindings>
-//	    <binding protocol="https" bindingInformation="*:443:example.com" />
+//	<system.applicationHost><sites><site name="..."><bindings>
+//	    <binding protocol="https" bindingInformation="*:443:example.com" sslFlags="1" />
 type iisConfig struct {
 	Sites []struct {
+		Name     string `xml:"name,attr"`
 		Bindings []struct {
 			Protocol string `xml:"protocol,attr"`
 			Info     string `xml:"bindingInformation,attr"` // "<ip>:<port>:<hostname>"
+			SSLFlags string `xml:"sslFlags,attr"`
 		} `xml:"bindings>binding"`
 	} `xml:"system.applicationHost>sites>site"`
 }
 
 // IISBinding is one HTTPS binding of an IIS site.
 type IISBinding struct {
-	IP   string // "*" means "all unassigned"
-	Port int
-	FQDN string // may be empty (binding without a hostname)
+	SiteName string
+	IP       string // "*" means "all unassigned"
+	Port     int
+	FQDN     string // may be empty (binding without a hostname)
+	SSLFlags uint32
 }
 
-// ReadHTTPSBindingsFromIIS reads applicationHost.config and returns its HTTPS bindings.
-func ReadHTTPSBindingsFromIIS() ([]IISBinding, error) {
-	windowsDir := os.Getenv("WINDIR")
-	if windowsDir == "" {
-		windowsDir = `C:\Windows`
-	}
-	configPath := filepath.Join(windowsDir, "System32", "inetsrv", "config", "applicationHost.config")
+// IIS sslFlags bits that affect certificate lookup.
+const (
+	sslFlagSNI = 1 // Server Name Indication
+	sslFlagCCS = 2 // Centralized Certificate Store
+)
 
+// ReadHTTPSBindingsFromIIS reads applicationHost.config and returns its HTTPS
+// bindings. A malformed binding does not stop the scan: valid bindings are
+// still returned together with the first parse error.
+func ReadHTTPSBindingsFromIIS() ([]IISBinding, error) {
+	configPath, err := GetIISConfigPath()
+	if err != nil {
+		return nil, err
+	}
 	data, err := os.ReadFile(configPath)
 	if err != nil {
-		return nil, fmt.Errorf("read IIS configuration (is IIS installed?): %w", err)
+		return nil, fmt.Errorf("read IIS configuration: %w", err)
 	}
-
 	var config iisConfig
 	if err := xml.Unmarshal(data, &config); err != nil {
 		return nil, fmt.Errorf("parse IIS configuration: %w", err)
 	}
 
 	var bindings []IISBinding
+	var firstErr error
 	for _, site := range config.Sites {
 		for _, b := range site.Bindings {
 			// Only https bindings have a certificate (http, ftp, net.tcp do not).
@@ -138,12 +181,25 @@ func ReadHTTPSBindingsFromIIS() ([]IISBinding, error) {
 			}
 			ip, port, host, err := splitBindingInfo(b.Info)
 			if err != nil {
-				return nil, fmt.Errorf("invalid binding %q: %w", b.Info, err)
+				if firstErr == nil {
+					firstErr = fmt.Errorf("site %q, binding %q: %w", site.Name, b.Info, err)
+				}
+				continue
 			}
-			bindings = append(bindings, IISBinding{IP: ip, Port: port, FQDN: host})
+			var flags uint64
+			if b.SSLFlags != "" {
+				flags, _ = strconv.ParseUint(strings.TrimSpace(b.SSLFlags), 10, 32) // bad value => 0, still scan it
+			}
+			bindings = append(bindings, IISBinding{
+				SiteName: site.Name,
+				IP:       ip,
+				Port:     port,
+				FQDN:     host,
+				SSLFlags: uint32(flags),
+			})
 		}
 	}
-	return bindings, nil
+	return bindings, firstErr
 }
 
 // splitBindingInfo splits "<ip>:<port>:<host>".
@@ -177,6 +233,38 @@ func splitBindingInfo(info string) (ip string, port int, host string, err error)
 	return ip, port, strings.TrimSpace(host), nil
 }
 
+// GetIISConfigPath returns the path of applicationHost.config, or an error if
+// it cannot be found (IIS not installed, or no permission).
+func GetIISConfigPath() (string, error) {
+	windowsDir := os.Getenv("windir")
+	if windowsDir == "" {
+		windowsDir = `C:\Windows`
+	}
+
+	build := func(systemDir string) string {
+		return filepath.Join(windowsDir, systemDir, "inetsrv", "config", "applicationHost.config")
+	}
+
+	// A 32-bit process on 64-bit Windows is redirected away from System32.
+	// Sysnative bypasses that, but does not exist on native 32-bit Windows.
+	if runtime.GOARCH == "386" {
+		if p := build("Sysnative"); fileExists(p) {
+			return p, nil
+		}
+	}
+
+	p := build("System32")
+	if _, err := os.Stat(p); err != nil {
+		return "", fmt.Errorf("IIS configuration unavailable at %s: %w", p, err)
+	}
+	return p, nil
+}
+
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
+
 // -----------------------------------------------------------------------------
 // Step 2: ask HTTP.sys which certificate is bound to a binding
 // -----------------------------------------------------------------------------
@@ -204,6 +292,10 @@ const (
 
 	afInet  = 2  // AF_INET
 	afInet6 = 23 // AF_INET6
+
+	// Upper bound for a buffer size requested by HTTP.sys. Real results are
+	// well under 1 KB; this only protects against garbage values.
+	maxHTTPBufferSize = 16 * 1024 * 1024
 )
 
 // sockaddrStorage mirrors the Windows SOCKADDR_STORAGE (128 bytes, 8-byte
@@ -273,6 +365,9 @@ func stopHTTPSys() {
 
 // buildSockaddr builds the Windows socket address for a binding IP and port.
 func buildSockaddr(ip string, port int) (*sockaddrStorage, error) {
+	if port < 1 || port > 65535 {
+		return nil, fmt.Errorf("invalid port %d", port)
+	}
 	addr, err := netip.ParseAddr(ip)
 	if err != nil {
 		return nil, fmt.Errorf("invalid binding IP %q: %w", ip, err)
@@ -297,12 +392,21 @@ func buildSockaddr(ip string, port int) (*sockaddrStorage, error) {
 }
 
 // ipsToTry lists the IPs to look up in HTTP.sys for an IIS binding IP.
-// "All unassigned" bindings can be registered as 0.0.0.0 and/or [::].
+//   - "All unassigned" bindings can be registered as 0.0.0.0 and/or [::].
+//   - A specific IP falls back to the matching wildcard, because HTTP.sys
+//     serves a wildcard-bound certificate for IPs without their own entry.
 func ipsToTry(ip string) []string {
 	if ip == "" || ip == "*" {
 		return []string{"0.0.0.0", "::"}
 	}
-	return []string{ip}
+	addr, err := netip.ParseAddr(ip)
+	if err != nil || addr.IsUnspecified() {
+		return []string{ip}
+	}
+	if addr.Unmap().Is4() {
+		return []string{ip, "0.0.0.0"}
+	}
+	return []string{ip, "::"}
 }
 
 // kernelBuffer is the output buffer filled in by HTTP.sys. HTTP.sys stores
@@ -316,12 +420,21 @@ func (b kernelBuffer) bytes() []byte {
 }
 
 // offsetOf converts an address inside the buffer into a byte offset.
+// Uses subtraction-based checks so addr+length can never overflow.
 func (b kernelBuffer) offsetOf(addr, length uintptr) (int, error) {
+	if len(b) == 0 {
+		return 0, errors.New("empty HTTP.sys buffer")
+	}
 	base := uintptr(unsafe.Pointer(&b[0]))
-	if addr < base || addr+length > base+uintptr(len(b)*8) {
+	size := uintptr(len(b)) * 8
+	if addr < base {
 		return 0, errors.New("HTTP.sys returned a pointer outside its buffer")
 	}
-	return int(addr - base), nil
+	offset := addr - base
+	if offset > size || length > size-offset {
+		return 0, errors.New("HTTP.sys returned a pointer outside its buffer")
+	}
+	return int(offset), nil
 }
 
 // readBytes copies n bytes found at addr (an address inside the buffer).
@@ -360,7 +473,11 @@ func callHTTPSysQuery(configID uintptr, input unsafe.Pointer, inputSize uintptr)
 		var buf kernelBuffer
 		var out unsafe.Pointer
 		if size > 0 {
-			buf = make(kernelBuffer, (size+7)/8)
+			if size > maxHTTPBufferSize {
+				return nil, fmt.Errorf("invalid HTTP.sys buffer size: %d", size)
+			}
+			words := (uint64(size) + 7) / 8
+			buf = make(kernelBuffer, int(words))
 			out = unsafe.Pointer(&buf[0])
 		}
 
@@ -374,6 +491,7 @@ func callHTTPSysQuery(configID uintptr, input unsafe.Pointer, inputSize uintptr)
 			uintptr(unsafe.Pointer(&size)),
 			0, // no overlapped I/O
 		)
+		runtime.KeepAlive(buf)
 
 		switch rc := uint32(r); rc {
 		case 0:
@@ -431,8 +549,19 @@ func queryBoundCertByIP(sa *sockaddrStorage) (boundCert, error) {
 }
 
 // queryBoundCertByHost looks up the certificate bound to hostname:port (SNI).
-func queryBoundCertByHost(sa *sockaddrStorage, host string) (boundCert, error) {
+func queryBoundCertByHost(port int, host string) (boundCert, error) {
+	host = strings.TrimSuffix(strings.ToLower(strings.TrimSpace(host)), ".")
+	if host == "" {
+		return boundCert{}, errors.New("empty SNI hostname")
+	}
 	hostPtr, err := windows.UTF16PtrFromString(host)
+	if err != nil {
+		return boundCert{}, err
+	}
+	// The SNI table key uses the IPv4 wildcard address; the hostname is
+	// supplied separately. Verify on a real IIS box (one SNI binding on a
+	// specific IP, one on "*").
+	sa, err := buildSockaddr("0.0.0.0", port)
 	if err != nil {
 		return boundCert{}, err
 	}
@@ -444,22 +573,33 @@ func queryBoundCertByHost(sa *sockaddrStorage, host string) (boundCert, error) {
 		return boundCert{}, err
 	}
 	if len(buf)*8 < int(unsafe.Sizeof(sniResult{})) {
-		return boundCert{}, errors.New("HTTP.sys result is too small")
+		return boundCert{}, errors.New("HTTP.sys SNI result is too small")
 	}
 	result := (*sniResult)(unsafe.Pointer(&buf[0]))
 	return readBoundCert(buf, &result.Param)
 }
 
+// errCCS marks bindings that use the Centralized Certificate Store.
+var errCCS = errors.New("Centralized Certificate Store binding: certificate is selected dynamically")
+
 // findBoundCert finds the certificate HTTP.sys has bound to an IIS binding.
 //
-// We do not need to know whether the binding uses SNI: we ask the SNI table
-// (hostname:port) first, then the plain IP:port table. Bindings HTTP.sys has
-// no entry for (e.g. Central Certificate Store) come back as "not found".
+// Order: SNI table (hostname:port) first when the binding has a hostname,
+// then the IP:port table. Only "record not found" moves on to the next lookup;
+// real errors (access denied, API failures) are returned immediately instead
+// of being hidden behind a fallback.
 func findBoundCert(b IISBinding) (boundCert, error) {
-	var firstErr error
-	rememberErr := func(err error) {
-		if firstErr == nil {
-			firstErr = err
+	if b.SSLFlags&sslFlagCCS != 0 {
+		return boundCert{}, errCCS
+	}
+
+	if b.FQDN != "" {
+		found, err := queryBoundCertByHost(b.Port, b.FQDN)
+		if err == nil {
+			return found, nil
+		}
+		if !errors.Is(err, windows.ERROR_FILE_NOT_FOUND) {
+			return boundCert{}, fmt.Errorf("SNI lookup: %w", err)
 		}
 	}
 
@@ -468,22 +608,15 @@ func findBoundCert(b IISBinding) (boundCert, error) {
 		if err != nil {
 			return boundCert{}, err
 		}
-
-		if b.FQDN != "" {
-			found, err := queryBoundCertByHost(sa, b.FQDN)
-			if err == nil {
-				return found, nil
-			}
-			rememberErr(err)
-		}
-
 		found, err := queryBoundCertByIP(sa)
 		if err == nil {
 			return found, nil
 		}
-		rememberErr(err)
+		if !errors.Is(err, windows.ERROR_FILE_NOT_FOUND) {
+			return boundCert{}, err // access denied etc. must surface
+		}
 	}
-	return boundCert{}, firstErr
+	return boundCert{}, windows.ERROR_FILE_NOT_FOUND
 }
 
 // -----------------------------------------------------------------------------
@@ -634,33 +767,8 @@ func toCertificateResult(b IISBinding, cert *x509.Certificate) models.Certificat
 	result.FingerprintSHA1 = strings.ToUpper(hex.EncodeToString(fp1[:]))
 
 	result.SANs = append(result.SANs, cert.DNSNames...)
+	for _, ip := range cert.IPAddresses {
+		result.SANs = append(result.SANs, ip.String())
+	}
 	return result
-}
-
-func GetIISConfigPath() (string, error) {
-	windowsDir := os.Getenv("windir")
-	if windowsDir == "" {
-		windowsDir = `C:\Windows`
-	}
-
-	systemDir := "System32"
-
-	// Sysnative bypasses filesystem redirection for 32-bit processes.
-	if runtime.GOARCH == "386" {
-		systemDir = "Sysnative"
-	}
-
-	configPath := filepath.Join(
-		windowsDir,
-		systemDir,
-		"inetsrv",
-		"config",
-		"applicationHost.config",
-	)
-
-	if _, err := os.Stat(configPath); err != nil {
-		return "", fmt.Errorf("IIS configuration unavailable at %s: %w", configPath, err)
-	}
-
-	return configPath, nil
 }
