@@ -45,11 +45,11 @@ func newResultCommand(use, short string, run runFunc, opts ...func(*cobra.Comman
 				return err
 			}
 
-			asJSON := true
-			data, err := render(res, asJSON, o.Pretty && !o.Compact)
+			data, err := render(res, true, o.Pretty && !o.Compact)
 			if err != nil {
 				return err
 			}
+
 			return writeOutput(cmd, o.Output, data)
 		},
 	}
@@ -98,16 +98,19 @@ func writeOutput(cmd *cobra.Command, path string, data []byte) error {
 	if len(data) == 0 {
 		return nil
 	}
+
 	if path == "" {
-		if _, err := cmd.OutOrStdout().Write(data); err != nil {
+		_, err := cmd.OutOrStdout().Write(data)
+		if err != nil {
 			return fmt.Errorf("write command output: %w", err)
 		}
 		return nil
 	}
-	if err := os.WriteFile(path, data, 0o600); err != nil {
+
+	if err := os.WriteFile(path, data, 0600); err != nil {
 		return fmt.Errorf("write output file %s: %w", path, err)
 	}
-	logger.Info("Command output written", "output_file", path, "size_bytes", len(data))
+
 	return nil
 }
 

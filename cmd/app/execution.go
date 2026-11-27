@@ -30,7 +30,6 @@ func executeApplication(ctx context.Context) error {
 		"command", executedCommand.CommandPath(),
 		"args", security.RedactArgs(os.Args[1:]),
 		"duration_ms", duration.Milliseconds(),
-		"response",
 	}
 
 	if err != nil {
