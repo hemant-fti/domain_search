@@ -357,6 +357,50 @@ func (r *renderer) websiteDetails(d models.DomainResult) {
 	kv("Config file", DisplayValue(d.ConfigPath))
 	kv("Proxy target", DisplayValue(d.ProxyTarget))
 	kv("SSL certificate", DisplayValue(d.SSLCertificate))
+
+	if len(d.Certificates) > 0 {
+		r.section("SSL CERTIFICATES")
+
+		for i, cert := range d.Certificates {
+			fmt.Fprintf(r.w, "\n  %s\n", bold(fmt.Sprintf("Certificate %d", i+1)))
+
+			status := red("Not installed")
+			if cert.Installed {
+				status = green("Installed")
+			}
+
+			r.kv(detailIndent, detailKeyWidth, "Status", status)
+			r.kv(detailIndent, detailKeyWidth, "Hostname", DisplayValue(cert.FQDN))
+			r.kv(detailIndent, detailKeyWidth, "Common name", DisplayValue(cert.CommonName))
+			r.kv(detailIndent, detailKeyWidth, "IP address", DisplayValue(cert.IP))
+			r.kv(detailIndent, detailKeyWidth, "Port", fmt.Sprintf("%d", cert.Port))
+
+			fmt.Fprintln(r.w)
+			fmt.Fprintf(r.w, "    %s\n", dim("IDENTITY"))
+
+			r.kv(detailIndent, detailKeyWidth, "Issuer", DisplayValue(cert.IssuerDN))
+			r.kv(detailIndent, detailKeyWidth, "Subject", DisplayValue(cert.SubjectDN))
+			r.kv(detailIndent, detailKeyWidth, "SANs", DisplayList(cert.SANs))
+
+			fmt.Fprintf(r.w, "\n    %s\n", dim("KEY INFORMATION"))
+
+			r.kv(detailIndent, detailKeyWidth, "Key type", DisplayValue(cert.KeyType))
+			r.kv(detailIndent, detailKeyWidth, "Key bits", formatCount(cert.KeyBits))
+			r.kv(detailIndent, detailKeyWidth, "Signature", DisplayValue(cert.SigAlg))
+
+			fmt.Fprintf(r.w, "\n    %s\n", dim("VALIDITY"))
+
+			r.kv(detailIndent, detailKeyWidth, "Valid from", DisplayValue(cert.NotBefore))
+			r.kv(detailIndent, detailKeyWidth, "Valid until", DisplayValue(cert.NotAfter))
+			r.kv(detailIndent, detailKeyWidth, "Serial number", DisplayValue(cert.SerialNumber))
+
+			fmt.Fprintf(r.w, "\n    %s\n", dim("FINGERPRINTS"))
+
+			r.kv(detailIndent, detailKeyWidth, "SHA-256", DisplayValue(cert.FingerprintSHA256))
+			r.kv(detailIndent, detailKeyWidth, "SHA-1", DisplayValue(cert.FingerprintSHA1))
+			r.kv(detailIndent, detailKeyWidth, "SPKI SHA-256", DisplayValue(cert.SPKISHA256))
+		}
+	}
 	kv("Aliases", DisplayList(d.Aliases))
 }
 

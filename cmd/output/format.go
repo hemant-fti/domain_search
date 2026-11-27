@@ -9,8 +9,6 @@ import (
 	"unicode/utf8"
 
 	"github.com/fatih/color"
-
-	"domain-search/models"
 )
 
 // ---------- options & styling ----------
@@ -133,18 +131,6 @@ func cpuSummary(model string, cores, threads int) string {
 		return model
 	}
 	return fmt.Sprintf("%s (%d cores / %d threads)", model, cores, threads)
-}
-
-func FormatDomain(d models.Domain) string {
-	var b strings.Builder
-	fmt.Fprintf(&b, "Domain: %s\n", DisplayValue(d.Name))
-	fmt.Fprintf(&b, "Server: %s\n", DisplayValue(d.Source))
-	fmt.Fprintf(&b, "Configuration: %s\n", DisplayValue(d.ConfigPath))
-	fmt.Fprintf(&b, "Proxy Target: %s\n", DisplayValue(d.ProxyTarget))
-	fmt.Fprintf(&b, "SSL Certificate: %s\n", DisplayValue(d.SSLCertificate))
-	fmt.Fprintf(&b, "Aliases: %s\n", DisplayList(d.Aliases))
-	fmt.Fprintf(&b, "Ports: %s\n", DisplayPorts(d.Ports))
-	return b.String()
 }
 
 // ---------- table & bar primitives ----------

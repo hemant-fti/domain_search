@@ -3,11 +3,13 @@ package iis
 import (
 	"context"
 	"domain-search/models"
+	iiscerts "domain-search/pkg/iis"
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
-	"runtime"
+	"strings"
+
+	"domain-search/pkg/logger"
 )
 
 func discoverIIS(ctx context.Context) ([]models.Domain, error) {
@@ -15,7 +17,7 @@ func discoverIIS(ctx context.Context) ([]models.Domain, error) {
 		return nil, err
 	}
 
-	configPath, err := getIISConfigPath()
+	configPath, err := iiscerts.GetIISConfigPath()
 	if err != nil {
 		return nil, err
 	}
@@ -48,33 +50,67 @@ func discoverIIS(ctx context.Context) ([]models.Domain, error) {
 		return nil, fmt.Errorf("failed to parse IIS configuration: %w", err)
 	}
 
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	// Retrieve certificates actually bound in HTTP.sys.
+	certificates, certErr := iiscerts.GetIISCertificates()
+
+	if certErr != nil {
+		logger.Error(
+			certErr,
+			"Some IIS SSL certificates could not be discovered",
+		)
+	}
+
+	// Associate certificates with their respective IIS websites.
+	for i := range domains {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+
+		for _, binding := range domains[i].Bindings {
+			if !strings.EqualFold(
+				strings.TrimSpace(binding.Protocol),
+				"https",
+			) {
+				continue
+			}
+
+			bindingIP := strings.TrimSpace(binding.IP)
+			if bindingIP == "" {
+				bindingIP = "*"
+			}
+
+			for _, cert := range certificates {
+				certIP := strings.TrimSpace(cert.IP)
+				if certIP == "" {
+					certIP = "*"
+				}
+
+				if cert.Port != binding.Port {
+					continue
+				}
+
+				if !strings.EqualFold(certIP, bindingIP) {
+					continue
+				}
+
+				if !strings.EqualFold(
+					strings.TrimSpace(cert.FQDN),
+					strings.TrimSpace(binding.Hostname),
+				) {
+					continue
+				}
+
+				domains[i].Certificates = append(
+					domains[i].Certificates,
+					cert,
+				)
+			}
+		}
+	}
+
 	return domains, nil
-}
-
-func getIISConfigPath() (string, error) {
-	windowsDir := os.Getenv("windir")
-	if windowsDir == "" {
-		windowsDir = `C:\Windows`
-	}
-
-	systemDir := "System32"
-
-	// Sysnative bypasses filesystem redirection for 32-bit processes.
-	if runtime.GOARCH == "386" {
-		systemDir = "Sysnative"
-	}
-
-	configPath := filepath.Join(
-		windowsDir,
-		systemDir,
-		"inetsrv",
-		"config",
-		"applicationHost.config",
-	)
-
-	if _, err := os.Stat(configPath); err != nil {
-		return "", fmt.Errorf("IIS configuration unavailable at %s: %w", configPath, err)
-	}
-
-	return configPath, nil
 }
