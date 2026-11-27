@@ -2,7 +2,7 @@ package rootcli
 
 import (
 	"domain-search/cmd/cli"
-	"fmt"
+	"domain-search/pkg/logger"
 
 	"github.com/spf13/cobra"
 )
@@ -29,10 +29,18 @@ const version = "1.1.0"
 func NewVersionCommand() *cobra.Command {
 	return &cobra.Command{
 		Use:   "version",
-		Short: "Display DomainScout version",
+		Short: "Display Hostscope version",
 		Args:  cobra.NoArgs,
-		Run: func(cmd *cobra.Command, args []string) {
-			fmt.Fprintf(cmd.OutOrStdout(), "hostscope %s\n", version)
+		RunE: func(cmd *cobra.Command, args []string) error {
+			data, err := logger.MarshalJSON(map[string]string{
+				"version": version,
+			}, true)
+			if err != nil {
+				return err
+			}
+
+			_, err = cmd.OutOrStdout().Write(data)
+			return err
 		},
 	}
 }

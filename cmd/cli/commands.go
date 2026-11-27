@@ -45,7 +45,7 @@ func newResultCommand(use, short string, run runFunc, opts ...func(*cobra.Comman
 				return err
 			}
 
-			asJSON := o.Jsonl || o.Compact || cmd.Flags().Changed("pretty")
+			asJSON := true
 			data, err := render(res, asJSON, o.Pretty && !o.Compact)
 			if err != nil {
 				return err
