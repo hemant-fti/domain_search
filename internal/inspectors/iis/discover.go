@@ -3,7 +3,7 @@ package iis
 import (
 	"context"
 	"domain-search/models"
-	iiscerts "domain-search/pkg/iis"
+	"domain-search/pkg/iis"
 	"errors"
 	"fmt"
 	"os"
@@ -17,7 +17,7 @@ func discoverIIS(ctx context.Context) ([]models.Domain, error) {
 		return nil, err
 	}
 
-	configPath, err := iiscerts.GetIISConfigPath()
+	configPath, err := iis.GetIISConfigPath()
 	if err != nil {
 		return nil, err
 	}
@@ -55,7 +55,7 @@ func discoverIIS(ctx context.Context) ([]models.Domain, error) {
 	}
 
 	// Retrieve certificates actually bound in HTTP.sys.
-	certificates, certErr := iiscerts.GetIISCertificates()
+	certificates, certErr := iis.GetIISCertificates()
 
 	if certErr != nil {
 		logger.Error(
